@@ -70,6 +70,23 @@ func (logger *LogWriter) writeLog(level LogLevel, message string) {
 	output.Print(message)
 }
 
+// writeLogf formats and writes a log line, checking the level BEFORE formatting.
+//
+// The level check has to happen here rather than in writeLog: passing
+// fmt.Sprintf(...) as an argument evaluates it unconditionally, so a discarded
+// message still pays for building the string. That matters because this plugin
+// logs whole response bodies (handler.ServeHTTP logs the body twice per
+// request), so the eager form allocated roughly twice the page size on every
+// request even with logging disabled — and Yaegi interprets rather than
+// compiles this, which makes the wasted work more expensive still.
+func (logger *LogWriter) writeLogf(level LogLevel, format string, a ...interface{}) {
+	if level < logger.level {
+		return
+	}
+
+	logger.writeLog(level, fmt.Sprintf(format, a...))
+}
+
 // LogTrace write Trace level logs.
 func (logger *LogWriter) LogTrace(message string) {
 	logger.writeLog(Trace, message)
@@ -97,25 +114,25 @@ func (logger *LogWriter) LogError(message string) {
 
 // LogTracef write Trace level logs with formatting similar to fmt.Sprintf.
 func (logger *LogWriter) LogTracef(format string, a ...interface{}) {
-	logger.writeLog(Trace, fmt.Sprintf(format, a...))
+	logger.writeLogf(Trace, format, a...)
 }
 
 // LogDebugf write Debug level logs with formatting similar to fmt.Sprintf.
 func (logger *LogWriter) LogDebugf(format string, a ...interface{}) {
-	logger.writeLog(Debug, fmt.Sprintf(format, a...))
+	logger.writeLogf(Debug, format, a...)
 }
 
 // LogInfof write Info level logs with formatting similar to fmt.Sprintf.
 func (logger *LogWriter) LogInfof(format string, a ...interface{}) {
-	logger.writeLog(Info, fmt.Sprintf(format, a...))
+	logger.writeLogf(Info, format, a...)
 }
 
 // LogWarningf write Warning level logs with formatting similar to fmt.Sprintf.
 func (logger *LogWriter) LogWarningf(format string, a ...interface{}) {
-	logger.writeLog(Warning, fmt.Sprintf(format, a...))
+	logger.writeLogf(Warning, format, a...)
 }
 
 // LogErrorf write Error level logs with formatting similar to fmt.Sprintf.
 func (logger *LogWriter) LogErrorf(format string, a ...interface{}) {
-	logger.writeLog(Error, fmt.Sprintf(format, a...))
+	logger.writeLogf(Error, format, a...)
 }
