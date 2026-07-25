@@ -31,7 +31,7 @@ content? This was handled as well.
   * `text/json`
 * The header must have `Content-Encoding` header that is supported by this plugin
   * The original plugin supported `Content-Encoding` of `identity` or empty
-  * This plugin adds support for `gzip` and `zlib` encoding
+  * This plugin adds support for `gzip` and `deflate` encoding
 
 #### Processing Paths
 
@@ -43,6 +43,12 @@ content? This was handled as well.
   * The body content is decompressed by [Go-lang's gzip library](https://pkg.go.dev/compress/gzip)
   * The resulting content is run through the `regex` process created by the original plugin
   * The processed content is then compressed with the same library and returned
+
+* If the `Content-Encoding` is `deflate` the same process runs using
+  [Go-lang's zlib library](https://pkg.go.dev/compress/zlib), since HTTP's
+  `deflate` means the zlib format of RFC 1950. A body that arrives as bare
+  RFC 1951 DEFLATE with no zlib wrapper is also decoded, because plenty of
+  servers send it that way.
 
 ## Configuration
 
