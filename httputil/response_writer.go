@@ -195,7 +195,15 @@ func (wrapper *ResponseWrapper) CloseNotify() <-chan bool {
 	// Read Done() out here so the goroutine captures the channel rather than the
 	// wrapper: capturing the wrapper would keep the whole buffered response body
 	// reachable until the request ends.
+	//
+	// A context that can never be canceled -- context.Background(), or anything
+	// derived from it without a cancel -- returns a nil channel here. Receiving
+	// from that blocks forever, so starting the goroutine would leak it for the
+	// lifetime of the process rather than the request.
 	done := wrapper.requestContext.Done()
+	if done == nil {
+		return notify
+	}
 
 	go func() {
 		<-done
