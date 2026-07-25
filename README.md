@@ -155,3 +155,40 @@ http:
 
 You can set an environment variable `THEME` to the name of a theme for easier consistency across apps.
 
+## Development
+
+### Traefik interprets this plugin, so its Go is not the Go you build with
+
+Traefik does not compile plugins. It runs them through
+[Yaegi](https://github.com/traefik/yaegi), and Traefik 3.7.9 pins
+`yaegi v0.16.1` — released April 2024, still the newest release, and lightly
+maintained since. Two consequences the compiler and `go test` will let you walk
+straight into:
+
+**The standard library is frozen at Go 1.22.** Yaegi resolves stdlib names
+through symbol tables generated at its own release, and every table in v0.16.1
+is `go1_22_*`. Anything added to the standard library after that does not exist
+at runtime, whatever `go.mod` says. `httptest.NewRequestWithContext` (Go 1.23)
+is a worked example: it compiles, `go test` passes, and then the interpreter
+rejects it.
+
+```text
+package httptest "net/http/httptest" has no symbol NewRequestWithContext
+```
+
+**Interfaces implemented here can be invisible to Traefik.** Yaegi hands
+compiled code a wrapper satisfying the one interface it was asked for, so a
+type assertion inside Traefik for a second interface fails even though the
+method is right there. `ResponseWrapper.Flush` is the live case: Traefik never
+calls it, which is why a forwarded response reaches the client as `net/http`'s
+own buffer fills rather than per flush. See `httputil/response_writer.go`.
+
+`make yaegi_test` catches the first of these and runs in CI on every push. The
+second shows up only against a running Traefik, so measure on the wire before
+trusting a change to the response path.
+
+None of this is what the `go` directive in `go.mod` controls. That is the
+minimum toolchain, and it constrains the compiler and the linters; Yaegi caps
+what the code may actually use. CI tests the Go releases upstream still
+supports, so the directive has to stay at or below `oldstable`.
+
