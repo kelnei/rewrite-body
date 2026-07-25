@@ -86,9 +86,8 @@ func (bodyRewrite *rewriteBody) ServeHTTP(response http.ResponseWriter, req *htt
 	bodyRewrite.next.ServeHTTP(wrappedWriter, wrappedRequest.CloneWithSupportedEncoding())
 
 	if !wrappedWriter.SupportsProcessing() {
-		// We are ignoring these any errors because the content should be unchanged here.
-		// This could "error" if writing is not supported but content will return properly.
-		_, _ = response.Write(wrappedWriter.GetBuffer().Bytes())
+		// Nothing to do: the wrapper forwarded this response to the client as the
+		// backend wrote it, rather than buffering a body it could not rewrite.
 		bodyRewrite.logger.LogDebugf(
 			"Ignoring unsupported response: content-type=%q content-encoding=%q",
 			wrappedWriter.Header().Get("Content-Type"),

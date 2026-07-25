@@ -107,11 +107,102 @@ func TestCloseNotifyFallsBackToRequestContext(t *testing.T) {
 	}
 }
 
+func TestWriteBuffersOnlyWhatItCanRewrite(t *testing.T) {
+	const body = "foo is the new bar"
+
+	tests := []struct {
+		desc        string
+		contentType string
+		encoding    string
+		expBuffered bool
+	}{
+		{
+			desc:        "should buffer a monitored type",
+			contentType: "text/html; charset=utf-8",
+			expBuffered: true,
+		},
+		{
+			desc:        "should buffer a monitored type in an encoding it can decode",
+			contentType: "text/html",
+			encoding:    compressutil.Gzip,
+			expBuffered: true,
+		},
+		{
+			desc:        "should forward an unmonitored type",
+			contentType: "application/octet-stream",
+			expBuffered: false,
+		},
+		{
+			desc:        "should forward an encoding it cannot decode",
+			contentType: "text/html",
+			encoding:    "br",
+			expBuffered: false,
+		},
+	}
+
+	for _, test := range tests {
+		t.Run(test.desc, func(t *testing.T) {
+			recorder := httptest.NewRecorder()
+			wrapper := newTestWrapper(recorder)
+			wrapper.Header().Set("Content-Type", test.contentType)
+			wrapper.Header().Set("Content-Encoding", test.encoding)
+
+			if _, err := wrapper.Write([]byte(body)); err != nil {
+				t.Fatal(err)
+			}
+
+			// The body goes to exactly one of the two: held back for the rewrite, or
+			// on its way to the client.
+			wantBuffered, wantSent := body, ""
+			if !test.expBuffered {
+				wantBuffered, wantSent = "", body
+			}
+
+			if got := wrapper.GetBuffer().String(); got != wantBuffered {
+				t.Errorf("got buffer %q, want %q", got, wantBuffered)
+			}
+
+			if got := recorder.Body.String(); got != wantSent {
+				t.Errorf("got client body %q, want %q", got, wantSent)
+			}
+
+			if got := wrapper.SupportsProcessing(); got != test.expBuffered {
+				t.Errorf("got SupportsProcessing %v, want %v", got, test.expBuffered)
+			}
+		})
+	}
+}
+
+func TestFlushSendsAForwardedResponseWithoutWaiting(t *testing.T) {
+	// A response the plugin cannot rewrite has to stream: the client gets each
+	// flushed chunk when the backend sends it, not when the request ends.
+	const chunk = "the first chunk of a stream"
+
+	recorder := httptest.NewRecorder()
+	wrapper := newTestWrapper(recorder)
+	wrapper.Header().Set("Content-Type", "text/event-stream")
+
+	if _, err := wrapper.Write([]byte(chunk)); err != nil {
+		t.Fatal(err)
+	}
+
+	wrapper.Flush()
+
+	if !recorder.Flushed {
+		t.Error("the flush did not reach the wrapped writer")
+	}
+
+	if got := recorder.Body.String(); got != chunk {
+		t.Errorf("got client body %q part way through the stream, want %q", got, chunk)
+	}
+}
+
 func TestGetContentLeavesBufferIntact(t *testing.T) {
 	const body = "this is not gzip data at all, it is plain text"
 
 	recorder := httptest.NewRecorder()
 	wrapper := newTestWrapper(recorder)
+	wrapper.Header().Set("Content-Type", "text/html")
 	wrapper.Header().Set("Content-Encoding", compressutil.Gzip)
 
 	if _, err := wrapper.Write([]byte(body)); err != nil {

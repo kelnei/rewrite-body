@@ -87,7 +87,9 @@ http:
       plugin:
         rewrite-body:
           # Keep Last-Modified header returned by the HTTP service.
-          # By default, the Last-Modified header is removed.
+          # By default, the Last-Modified header is removed -- from the responses
+          # this plugin rewrites. One it forwards untouched keeps the header,
+          # because the content it describes has not changed.
           lastModified: true
 
           # Rewrites all "foo" occurences by "bar"
