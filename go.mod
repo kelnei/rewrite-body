@@ -1,3 +1,3 @@
 module github.com/kelnei/rewrite-body
 
-go 1.26
+go 1.25
