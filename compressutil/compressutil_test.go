@@ -2,6 +2,8 @@ package compressutil_test
 
 import (
 	"bytes"
+	"compress/gzip"
+	"errors"
 	"testing"
 
 	"github.com/kelnei/rewrite-body/compressutil"
@@ -81,6 +83,24 @@ func TestEncode(t *testing.T) {
 				t.Errorf("match error got body: %v\n wanted: %v", output, test.input)
 			}
 		})
+	}
+}
+
+func TestDecodeErrorUnwraps(t *testing.T) {
+	notGzip := bytes.NewBufferString("this is not gzip data at all, it is plain text")
+
+	_, err := compressutil.Decode(notGzip, compressutil.Gzip)
+	if err == nil {
+		t.Fatal("expected an error decoding a body that is not gzip")
+	}
+
+	var readerError *compressutil.ReaderError
+	if !errors.As(err, &readerError) {
+		t.Errorf("got %T, want a *compressutil.ReaderError", err)
+	}
+
+	if !errors.Is(err, gzip.ErrHeader) {
+		t.Errorf("got %v, want it to match gzip.ErrHeader", err)
 	}
 }
 
