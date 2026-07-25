@@ -1,17 +1,24 @@
 displayName: Rewrite Body (with compression support)
 
-summary: Built on top of Traefik Rewrite Body plugin to also support gzip decompress -> update -> recompress.
+summary: Rewrite HTTP response bodies by regex, including gzip and deflate encoded responses. Maintained fork of packruler/rewrite-body.
 
 type: middleware
 
 import: github.com/kelnei/rewrite-body
 
+# Traefik instantiates the plugin with this configuration to validate it, and
+# the catalog shows it as the worked example, so the keys have to match Config
+# exactly -- an unknown one is dropped in silence. `types` names two entries
+# rather than the single default for that reason: if this block ever stops
+# binding, what the plugin reports no longer matches what is written here.
 testData:
   lastModified: true
   rewrites:
     - regex: "bar"
       replacement: "foo"
-  monitor:
+  monitoring:
     types:
       - text/html
-    methods: ["GET"]
+      - application/json
+    methods:
+      - GET

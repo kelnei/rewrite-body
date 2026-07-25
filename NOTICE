@@ -73,6 +73,11 @@ upstream v1.2.0 (commit a37d560, 24 November 2022):
     Traefik 3.7.9 delivers proper slices through both the file provider and
     docker labels.
 
+  * .traefik.yml: the testData block named `monitor` where the configuration key
+    is `monitoring`, so it never bound. An unknown key is dropped in silence and
+    the defaults backfilled values identical to the ones written there, which is
+    what hid it.
+
   * .github/workflows and .golangci.yaml were updated so lint and tests -- both
     compiled and under Yaegi -- actually run for this fork. Tests were added
     throughout for the above.
