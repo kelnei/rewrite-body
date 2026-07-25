@@ -19,6 +19,10 @@ type ResponseWrapper struct {
 	lastModified bool `default:"true"`
 	wroteHeader  bool
 
+	// passThrough records that this response is being forwarded rather than
+	// buffered; see WriteHeader for where the choice is made.
+	passThrough bool
+
 	code int `default:"200"`
 
 	// requestContext backs the deprecated CloseNotify shim; see the method.
@@ -41,6 +45,7 @@ func WrapWriter(
 		buffer:         bytes.Buffer{},
 		lastModified:   lastModified,
 		wroteHeader:    false,
+		passThrough:    false,
 		code:           http.StatusOK,
 		requestContext: requestContext,
 		logWriter:      logWriter,
@@ -50,28 +55,52 @@ func WrapWriter(
 }
 
 // WriteHeader into wrapped ResponseWriter.
+//
+// This is where the response headers are last ours to change, and the first
+// point at which they say what the body is, so it is also where the wrapper
+// decides whether to buffer that body or forward it. Nothing after this can
+// revisit the choice: the status line has gone out and any header edit past it
+// is ignored.
 func (wrapper *ResponseWrapper) WriteHeader(statusCode int) {
 	if wrapper.wroteHeader {
 		return
 	}
 
-	if !wrapper.lastModified {
-		wrapper.ResponseWriter.Header().Del("Last-Modified")
-	}
-
 	wrapper.code = statusCode
 	wrapper.wroteHeader = true
+	wrapper.passThrough = !wrapper.canRewrite()
 
-	// Delegates the Content-Length Header creation to the final body write.
-	wrapper.ResponseWriter.Header().Del("Content-Length")
+	// A forwarded response reaches the client as the backend sent it, headers
+	// included: its Content-Length still measures the body, and its
+	// Last-Modified still describes content this plugin does not touch.
+	if !wrapper.passThrough {
+		if !wrapper.lastModified {
+			wrapper.ResponseWriter.Header().Del("Last-Modified")
+		}
+
+		// Delegates the Content-Length Header creation to the final body write.
+		wrapper.ResponseWriter.Header().Del("Content-Length")
+	}
 
 	wrapper.ResponseWriter.WriteHeader(statusCode)
 }
 
-// Write data to internal buffer and mark the status code as http.StatusOK.
+// Write buffers data for rewriting, or forwards it to the client when this
+// response is not one the plugin can rewrite.
+//
+// Forwarding is what keeps the plugin off the path of responses it was never
+// going to change. A request can only be gated on its Accept header, which
+// rules out very little -- fetch sends */* and plenty of clients send nothing
+// at all -- so downloads and open-ended streams reach this method routinely.
+// Buffering those would hold an entire body in memory for the life of the
+// request, and would hold a stream back until it ended.
 func (wrapper *ResponseWrapper) Write(data []byte) (int, error) {
 	if !wrapper.wroteHeader {
 		wrapper.WriteHeader(http.StatusOK)
+	}
+
+	if wrapper.passThrough {
+		return wrapper.ResponseWriter.Write(data)
 	}
 
 	return wrapper.buffer.Write(data)
@@ -139,18 +168,26 @@ func (wrapper *ResponseWrapper) getContentType() string {
 	return wrapper.getHeader("Content-Type")
 }
 
-// SupportsProcessing determine if HttpWrapper is supported by this plugin based on encoding.
+// SupportsProcessing reports whether the response was buffered for rewriting.
+//
+// This answers the question after the fact rather than deciding it: WriteHeader
+// settled it, and by the time a caller asks, the body has either been buffered
+// or already sent. A response that never wrote a header wrote no body either.
 func (wrapper *ResponseWrapper) SupportsProcessing() bool {
+	return wrapper.wroteHeader && !wrapper.passThrough
+}
+
+// canRewrite reports whether the response headers describe a body this plugin
+// can decode, rewrite and re-encode.
+func (wrapper *ResponseWrapper) canRewrite() bool {
 	// This is the authoritative type check: the response Content-Type is what
 	// decides whether a body gets rewritten.
 	if !wrapper.monitoring.MatchesType(wrapper.getContentType()) {
 		return false
 	}
 
-	encoding := wrapper.getContentEncoding()
-
 	// If content type is supported validate encoding as well
-	switch encoding {
+	switch wrapper.getContentEncoding() {
 	case compressutil.Gzip, compressutil.Deflate, compressutil.Identity, "":
 		return true
 	default:
@@ -224,6 +261,23 @@ func (wrapper *ResponseWrapper) Hijack() (net.Conn, *bufio.ReadWriter, error) {
 }
 
 // Flush sends any buffered data to the client.
+//
+// A forwarded response flushes through to the client the way the backend
+// intended. A buffered one has nothing here to send: a regex can match across
+// writes, so rewriting needs the whole body, and no part of it can leave before
+// the handler has finished with it. Passing the flush along still commits the
+// status and headers, which is what a caller flushing ahead of its first write
+// is asking for.
+//
+// Under Traefik this is never called: Yaegi hands compiled code an
+// http.ResponseWriter wrapper around the interpreted value, and that wrapper
+// carries no other interface, so the proxy's check for an http.Flusher fails
+// and it stops flushing for the route -- measured against Traefik 3.7.9, where
+// a text/event-stream response that streams chunk by chunk without the plugin
+// arrives in one piece with it. A forwarded body still leaves as net/http's
+// response buffer fills rather than being held to the end, which is what keeps
+// a long stream moving. The method stays for compiled callers, and for the day
+// the interpreter grows the wrappers.
 func (wrapper *ResponseWrapper) Flush() {
 	// If WriteHeader was already called from the caller, this is a NOOP.
 	// Otherwise, codeCatcher.code is actually a 200 here.

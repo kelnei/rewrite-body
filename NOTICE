@@ -40,9 +40,17 @@ upstream v1.2.0 (commit a37d560, 24 November 2022):
   * httputil/request_wrapper.go: the request Accept header no longer has to name
     a monitored content type. */*, a range wildcard and a missing header are all
     treated as open-ended and fall through to the response Content-Type check,
-    so fetch and XMLHttpRequest responses are rewritten. This is a behaviour
-    change: requests that previously went unprocessed now get buffered unless
-    they ask only for an unmonitored type.
+    so fetch and XMLHttpRequest responses are rewritten.
+
+  * httputil/response_writer.go: only a response the plugin can actually rewrite
+    is buffered. The rest are forwarded to the client write by write, with their
+    headers untouched, rather than being held in memory to be handed straight
+    back at the end of the request. This is what makes the Accept change above
+    safe: an open-ended request that turns out to be a download or a stream no
+    longer costs its whole length in memory, keeps the Content-Length and
+    Last-Modified the backend set, and reaches the client as it arrives.
+    Measured against Traefik 3.7.9: a 24 kB chunked response delivered over
+    0.9s previously arrived in one piece at the end.
 
   * httputil/request_wrapper.go: monitored methods are compared exactly rather
     than by substring, and HEAD is never processed -- a HEAD response has no

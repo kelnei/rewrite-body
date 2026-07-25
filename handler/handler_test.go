@@ -24,6 +24,10 @@ func TestServeHTTP(t *testing.T) {
 		resBody         string
 		expResBody      string
 		expLastModified bool
+		// expPassThrough marks a response the plugin cannot rewrite. Those are
+		// forwarded as the backend sent them, headers included, so the header
+		// expectations follow from it.
+		expPassThrough bool
 	}{
 		{
 			desc: "should replace foo by bar",
@@ -65,6 +69,10 @@ func TestServeHTTP(t *testing.T) {
 			contentType:     "text/html",
 			resBody:         "foo is the new bar",
 			expResBody:      "foo is the new bar",
+			// lastModified is false, but that only asks for the header to be dropped
+			// from a body this plugin rewrites.
+			expLastModified: true,
+			expPassThrough:  true,
 		},
 		{
 			desc: "should not replace anything if content type does not contain text or is not empty",
@@ -74,9 +82,11 @@ func TestServeHTTP(t *testing.T) {
 					Replacement: "bar",
 				},
 			},
-			contentType: "image",
-			resBody:     "foo is the new bar",
-			expResBody:  "foo is the new bar",
+			contentType:     "image",
+			resBody:         "foo is the new bar",
+			expResBody:      "foo is the new bar",
+			expLastModified: true,
+			expPassThrough:  true,
 		},
 		{
 			desc: "should replace foo by bar if content encoding is identity",
@@ -150,6 +160,7 @@ func TestServeHTTP(t *testing.T) {
 			resBody:         "foo is the new bar",
 			expResBody:      "foo is the new bar",
 			expLastModified: true,
+			expPassThrough:  true,
 		},
 	}
 
@@ -186,8 +197,11 @@ func TestServeHTTP(t *testing.T) {
 				t.Errorf("got last-modified header %v, want %v", exists, test.expLastModified)
 			}
 
-			if _, exists := recorder.Result().Header["Content-Length"]; exists {
-				t.Error("The Content-Length Header must be deleted")
+			// A rewritten body has a length of its own, which the final write
+			// establishes. A forwarded one keeps the Content-Length that already
+			// measures it, so the response does not become chunked for nothing.
+			if _, exists := recorder.Result().Header["Content-Length"]; exists != test.expPassThrough {
+				t.Errorf("got content-length header %v, want %v", exists, test.expPassThrough)
 			}
 
 			if !bytes.Equal([]byte(test.expResBody), recorder.Body.Bytes()) {
@@ -337,6 +351,50 @@ func TestMatchSpanningWrites(t *testing.T) {
 	want := "<html><body>bar is the new bar</body></html>"
 	if recorder.Body.String() != want {
 		t.Errorf("got body %q, want %q", recorder.Body.String(), want)
+	}
+}
+
+func TestForwardedResponseStreamsWhileTheBackendWrites(t *testing.T) {
+	// An Accept header cannot tell us a response will be unrewritable, so a
+	// stream reaches the plugin like anything else -- here with no Accept at all,
+	// the most open-ended case. It must still arrive at the client chunk by
+	// chunk: a stream delivered only once the backend has finished is not a
+	// stream, and one held in a buffer costs its whole length in memory.
+	chunks := []string{"data: foo\n\n", "data: still foo\n\n"}
+
+	recorder := httptest.NewRecorder()
+
+	next := func(responseWriter http.ResponseWriter, _ *http.Request) {
+		responseWriter.Header().Set("Content-Type", "text/event-stream")
+		responseWriter.WriteHeader(http.StatusOK)
+
+		flusher, isFlusher := responseWriter.(http.Flusher)
+		if !isFlusher {
+			t.Fatalf("got %T, want an http.Flusher", responseWriter)
+		}
+
+		sent := ""
+
+		for _, chunk := range chunks {
+			if _, err := responseWriter.Write([]byte(chunk)); err != nil {
+				t.Fatal(err)
+			}
+
+			flusher.Flush()
+
+			sent += chunk
+
+			if got := recorder.Body.String(); got != sent {
+				t.Errorf("the client had %q part way through the stream, want %q", got, sent)
+			}
+		}
+	}
+
+	newTestHandler(t, fooToBar, next).ServeHTTP(recorder, httptest.NewRequest(http.MethodGet, "/", nil))
+
+	want := chunks[0] + chunks[1]
+	if got := recorder.Body.String(); got != want {
+		t.Errorf("got body %q, want it forwarded unchanged as %q", got, want)
 	}
 }
 
