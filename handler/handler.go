@@ -143,11 +143,18 @@ func (bodyRewrite *rewriteBody) handlePanic() {
 
 	// http.ErrAbortHandler is a sentinel, not a failure: something downstream
 	// panicked with it to tell net/http to abandon the response and close the
-	// connection without logging a stack trace. Recovering it here and
-	// returning normally would make the server believe the handler finished, so
-	// it would try to complete a response that was deliberately abandoned --
-	// which is what produces "malformed chunked encoding" on the client.
+	// connection without logging a stack trace. Recovering it here and returning
+	// normally would make the server believe the handler finished, so it would
+	// try to complete a response that was deliberately abandoned. Measured
+	// against Traefik 3.7.9, that reached the client as a 200 with
+	// Content-Length: 0 -- an abandoned response delivered as a success.
 	// Re-panic and let net/http perform the abort it was asked for.
+	//
+	// Expect one ERROR line per aborted request from Traefik's recovery
+	// middleware, where a route without this plugin logs the same abort at
+	// DEBUG. Yaegi wraps the value we re-panic with, which defeats Traefik's
+	// errors.Is(err, http.ErrAbortHandler) check. Log noise only, and not
+	// something a plugin can fix from in here.
 	if errors.Is(err, http.ErrAbortHandler) {
 		panic(recovery)
 	}
