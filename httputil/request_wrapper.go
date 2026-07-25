@@ -127,22 +127,58 @@ func removeUnsupportedAcceptEncoding(header http.Header) string {
 	return strings.Join(result, ",")
 }
 
-// SupportsProcessing determine if http.Request is supported by this plugin.
-func (req *RequestWrapper) SupportsProcessing() bool {
+// acceptsMonitoredType reports whether the request's Accept header leaves room
+// for a monitored content type.
+//
+// Accept states what the client would like, not what the response will be, so
+// it can only be used to skip requests that clearly want something else.
+// Anything open-ended has to count as a maybe: fetch and XMLHttpRequest send
+// "Accept: */*" and some clients send no Accept at all, and treating those as
+// unsupported meant their responses were never rewritten -- for a WordPress
+// backend that is admin-ajax.php and the REST routes. The authoritative check
+// is the response Content-Type, which ResponseWrapper.SupportsProcessing
+// applies once the type is actually known.
+func (req *RequestWrapper) acceptsMonitoredType() bool {
 	acceptHeader := req.Header.Get("Accept")
-	isSupported := false
+
+	// No preference stated, or every type accepted.
+	if acceptHeader == "" || strings.Contains(acceptHeader, "*/*") {
+		return true
+	}
 
 	for _, monitoredType := range req.monitoring.Types {
 		if strings.Contains(acceptHeader, monitoredType) {
-			isSupported = true
+			return true
+		}
+
+		// A range wildcard covering a monitored type, such as text/* for
+		// text/html, leaves the response type open as well.
+		if strings.Contains(acceptHeader, typeRange(monitoredType)) {
+			return true
 		}
 	}
 
-	if !isSupported {
+	return false
+}
+
+// typeRange converts a content type into the Accept range that covers it:
+// text/html becomes text/*.
+func typeRange(contentType string) string {
+	separator := strings.Index(contentType, "/")
+	if separator < 0 {
+		return contentType
+	}
+
+	return contentType[:separator+1] + "*"
+}
+
+// SupportsProcessing determine if http.Request is supported by this plugin.
+func (req *RequestWrapper) SupportsProcessing() bool {
+	if !req.acceptsMonitoredType() {
 		return false
 	}
 
-	isSupported = false
+	isSupported := false
 
 	// Ignore non GET requests. Methods are exact tokens, so this compares whole
 	// values: a substring match would let a monitored GET pick up any method
