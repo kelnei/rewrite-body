@@ -21,9 +21,8 @@ type ResponseWrapper struct {
 
 	code int `default:"200"`
 
-	// requestContext backs the deprecated CloseNotify shim; see the method. It is
-	// held rather than passed because CloseNotify's signature takes no arguments.
-	requestContext context.Context //nolint:containedctx // needed by the CloseNotify shim
+	// requestContext backs the deprecated CloseNotify shim; see the method.
+	requestContext context.Context //nolint:containedctx // CloseNotify takes no arguments to pass it through
 	logWriter      logger.LogWriter
 	monitoring     MonitoringConfig
 
@@ -180,9 +179,8 @@ func (wrapper *ResponseWrapper) Unwrap() http.ResponseWriter {
 //
 // http.CloseNotifier is deprecated -- the request context is the modern signal
 // -- but this stays so callers that still type-assert for a CloseNotifier keep
-// working. The wrapped writer's own implementation is preferred; where it has
-// none, the request context stands in. This used to return a channel that no
-// one could ever send on, which reads as "the client is still there" forever.
+// working. This used to return a channel that no one could ever send on, which
+// reads as "the client is still there" forever.
 func (wrapper *ResponseWrapper) CloseNotify() <-chan bool {
 	if closeNotifier, ok := wrapper.ResponseWriter.(http.CloseNotifier); ok {
 		return closeNotifier.CloseNotify()
@@ -194,8 +192,13 @@ func (wrapper *ResponseWrapper) CloseNotify() <-chan bool {
 		return notify
 	}
 
+	// Read Done() out here so the goroutine captures the channel rather than the
+	// wrapper: capturing the wrapper would keep the whole buffered response body
+	// reachable until the request ends.
+	done := wrapper.requestContext.Done()
+
 	go func() {
-		<-wrapper.requestContext.Done()
+		<-done
 
 		notify <- true
 	}()
