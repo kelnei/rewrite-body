@@ -1,16 +1,12 @@
 run:
   timeout: 3m
-  skip-files: []
-  skip-dirs: []
+
 linters-settings:
   govet:
-    check-shadowing: false
-  golint:
-    min-confidence: 0
+    enable:
+      - shadow
   gocyclo:
     min-complexity: 12
-  maligned:
-    suggest-new: true
   goconst:
     min-len: 3
     min-occurrences: 4
@@ -38,21 +34,61 @@ linters-settings:
       # You can specify idiomatic endings for interface
       - (or|er)$
       - github.com/kelnei/rewrite-body/logger.LogWriter
+
+# Upstream used `enable-all: true`, which silently takes on every linter each
+# new golangci-lint release adds. By 2026 that meant ~54 findings, nearly all
+# from linters that did not exist when this code was written, and CI that could
+# never go green. The set below is explicit so a golangci-lint upgrade changes
+# the version, not the rules.
 linters:
-  enable-all: true
-  disable:
-    - scopelint
-    - golint
-    - interfacer
-    - maligned
-    - bodyclose
-    - goerr113
-    - wrapcheck
-    - maligned
-    - exhaustivestruct
-    - testpackage
-    - paralleltest
+  enable:
+    - asasalint
+    - asciicheck
+    - bidichk
+    - containedctx
+    - contextcheck
+    - dogsled
+    - dupl
+    - durationcheck
+    - errname
+    - errorlint
+    - exhaustive
+    - funlen
+    - gocheckcompilerdirectives
+    - gochecknoinits
+    - gocognit
+    - goconst
+    - gocritic
+    - gocyclo
+    - godot
+    - goprintffuncname
+    - gosec
+    - importas
+    - ireturn
+    - lll
+    - makezero
+    - misspell
+    - nakedret
+    - nestif
+    - nilerr
+    - nilnil
+    - noctx
+    - nolintlint
+    - predeclared
+    - promlinter
+    - reassign
+    - revive
+    - rowserrcheck
+    - sqlclosecheck
+    - thelper
     - tparallel
+    - unconvert
+    - unparam
+    - usestdlibvars
+    - wastedassign
+    - whitespace
+    - wsl
+
 issues:
   exclude-use-default: false
   max-per-linter: 0
@@ -60,10 +96,13 @@ issues:
   exclude:
     - don't use an underscore in package name
     - "ST1003: should not use underscores in package names"
-    - "SA1019: http.CloseNotifier has been deprecated since Go 1.11 and an alternative has been available since Go 1.7: the CloseNotifier interface predates Go's context package. New code should use Request.Context instead."
+    # CloseNotify is a deprecated interface kept deliberately, for callers that
+    # still type-assert for it. See httputil/response_writer.go.
+    - "SA1019: http.CloseNotifier has been deprecated"
   exclude-rules:
     - path: (.+)_test.go
       linters:
+        - dupl
         - goconst
         - funlen
         - godot

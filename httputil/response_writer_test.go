@@ -96,7 +96,7 @@ func TestCloseNotifyFallsBackToRequestContext(t *testing.T) {
 
 	select {
 	case <-notify:
-		t.Fatal("client reported as gone before the request was cancelled")
+		t.Fatal("client reported as gone before the request was canceled")
 	default:
 	}
 

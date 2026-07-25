@@ -22,8 +22,9 @@ type ResponseWrapper struct {
 
 	code int `default:"200"`
 
-	// requestContext backs the deprecated CloseNotify shim; see the method.
-	requestContext context.Context
+	// requestContext backs the deprecated CloseNotify shim; see the method. It is
+	// held rather than passed because CloseNotify's signature takes no arguments.
+	requestContext context.Context //nolint:containedctx // needed by the CloseNotify shim
 	logWriter      logger.LogWriter
 	monitoring     MonitoringConfig
 
