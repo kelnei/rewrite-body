@@ -83,7 +83,12 @@ func (wrapper *ResponseWrapper) GetBuffer() *bytes.Buffer {
 func (wrapper *ResponseWrapper) GetContent() ([]byte, error) {
 	encoding := wrapper.getContentEncoding()
 
-	return compressutil.Decode(wrapper.GetBuffer(), encoding)
+	// Decode consumes the buffer it reads from, and a failed decode consumes
+	// whatever it got through first -- an unreadable gzip stream still costs the
+	// 10 header bytes. Callers fall back to writing the buffered response when
+	// decoding fails, so hand Decode a view over the bytes instead of the buffer
+	// itself and leave the original intact for that fallback.
+	return compressutil.Decode(bytes.NewBuffer(wrapper.buffer.Bytes()), encoding)
 }
 
 // SetContent write data to the internal ResponseWriter buffer

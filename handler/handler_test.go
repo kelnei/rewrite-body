@@ -203,6 +203,47 @@ func compressString(value string, encoding string) string {
 	return string(compressed)
 }
 
+func TestUndecodableBodyIsPassedThroughIntact(t *testing.T) {
+	// A body that claims an encoding it does not actually use. The rewrite has to
+	// be abandoned, but the client must still receive every byte the backend
+	// sent -- decoding must not consume part of the buffered response on its way
+	// to failing.
+	resBody := "this is not gzip data at all, it is plain text"
+
+	config := &Config{
+		Rewrites: []Rewrite{
+			{
+				Regex:       "foo",
+				Replacement: "bar",
+			},
+		},
+		LogLevel: 2,
+	}
+
+	next := func(responseWriter http.ResponseWriter, _ *http.Request) {
+		responseWriter.Header().Set("Content-Encoding", compressutil.Gzip)
+		responseWriter.Header().Set("Content-Type", "text/html")
+		responseWriter.WriteHeader(http.StatusOK)
+
+		_, _ = responseWriter.Write([]byte(resBody))
+	}
+
+	rewriteBody, err := New(context.Background(), http.HandlerFunc(next), config, "rewriteBody")
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	recorder := httptest.NewRecorder()
+	req := httptest.NewRequest(http.MethodGet, "/", nil)
+	req.Header.Set("Accept", "text/html")
+
+	rewriteBody.ServeHTTP(recorder, req)
+
+	if recorder.Body.String() != resBody {
+		t.Errorf("got body %q, want the original %q", recorder.Body.String(), resBody)
+	}
+}
+
 func TestPanicHandling(t *testing.T) {
 	tests := []struct {
 		desc       string
