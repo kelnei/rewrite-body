@@ -2,21 +2,30 @@ package httputil
 
 import (
 	"bytes"
+	"context"
 	"net/http"
 	"net/http/httptest"
 	"testing"
+	"time"
 
 	"github.com/kelnei/rewrite-body/compressutil"
 	"github.com/kelnei/rewrite-body/logger"
 )
 
 func newTestWrapper(responseWriter http.ResponseWriter) *ResponseWrapper {
+	return newTestWrapperWithContext(context.Background(), responseWriter)
+}
+
+func newTestWrapperWithContext(
+	requestContext context.Context,
+	responseWriter http.ResponseWriter,
+) *ResponseWrapper {
 	monitoring := MonitoringConfig{
 		Types:   []string{"text/html"},
 		Methods: []string{http.MethodGet},
 	}
 
-	return WrapWriter(responseWriter, monitoring, *logger.CreateLogger(logger.Error), true)
+	return WrapWriter(requestContext, responseWriter, monitoring, *logger.CreateLogger(logger.Error), true)
 }
 
 func TestSetContent(t *testing.T) {
@@ -65,6 +74,41 @@ func TestSetContent(t *testing.T) {
 				t.Errorf("got body %q, want %q", decoded, body)
 			}
 		})
+	}
+}
+
+func TestUnwrap(t *testing.T) {
+	recorder := httptest.NewRecorder()
+	wrapper := newTestWrapper(recorder)
+
+	if unwrapped := wrapper.Unwrap(); unwrapped != http.ResponseWriter(recorder) {
+		t.Errorf("got %v, want the wrapped writer %v", unwrapped, recorder)
+	}
+}
+
+func TestCloseNotifyFallsBackToRequestContext(t *testing.T) {
+	// httptest.ResponseRecorder is not an http.CloseNotifier, so the wrapper has
+	// to supply the signal itself.
+	requestContext, cancel := context.WithCancel(context.Background())
+	wrapper := newTestWrapperWithContext(requestContext, httptest.NewRecorder())
+
+	notify := wrapper.CloseNotify()
+
+	select {
+	case <-notify:
+		t.Fatal("client reported as gone before the request was cancelled")
+	default:
+	}
+
+	cancel()
+
+	select {
+	case gone := <-notify:
+		if !gone {
+			t.Error("got false on the close notification channel, want true")
+		}
+	case <-time.After(time.Second):
+		t.Error("timed out waiting for the close notification")
 	}
 }
 

@@ -4,6 +4,7 @@ package httputil
 import (
 	"bufio"
 	"bytes"
+	"context"
 	"fmt"
 	"net"
 	"net/http"
@@ -21,14 +22,17 @@ type ResponseWrapper struct {
 
 	code int `default:"200"`
 
-	logWriter  logger.LogWriter
-	monitoring MonitoringConfig
+	// requestContext backs the deprecated CloseNotify shim; see the method.
+	requestContext context.Context
+	logWriter      logger.LogWriter
+	monitoring     MonitoringConfig
 
 	http.ResponseWriter
 }
 
 // WrapWriter create a ResponseWrapper for provided configuration.
 func WrapWriter(
+	requestContext context.Context,
 	responseWriter http.ResponseWriter,
 	monitoringConfig MonitoringConfig,
 	logWriter logger.LogWriter,
@@ -39,6 +43,7 @@ func WrapWriter(
 		lastModified:   lastModified,
 		wroteHeader:    false,
 		code:           http.StatusOK,
+		requestContext: requestContext,
 		logWriter:      logWriter,
 		monitoring:     monitoringConfig,
 		ResponseWriter: responseWriter,
@@ -169,14 +174,43 @@ func (wrapper *ResponseWrapper) SetLastModified(value bool) {
 	wrapper.lastModified = value
 }
 
+// Unwrap returns the wrapped http.ResponseWriter.
+//
+// http.ResponseController (Go 1.20+) follows Unwrap to find the optional
+// interfaces implemented further down the chain -- Flusher, Hijacker, the
+// deadline setters -- so implementing it makes those reachable through this
+// wrapper. Flush and Hijack are also implemented directly here, and those keep
+// precedence over anything Unwrap exposes.
+func (wrapper *ResponseWrapper) Unwrap() http.ResponseWriter {
+	return wrapper.ResponseWriter
+}
+
 // CloseNotify returns a channel that receives at most a
 // single value (true) when the client connection has gone away.
+//
+// http.CloseNotifier is deprecated -- the request context is the modern signal
+// -- but this stays so callers that still type-assert for a CloseNotifier keep
+// working. The wrapped writer's own implementation is preferred; where it has
+// none, the request context stands in. This used to return a channel that no
+// one could ever send on, which reads as "the client is still there" forever.
 func (wrapper *ResponseWrapper) CloseNotify() <-chan bool {
-	if w, ok := wrapper.ResponseWriter.(http.CloseNotifier); ok {
-		return w.CloseNotify()
+	if closeNotifier, ok := wrapper.ResponseWriter.(http.CloseNotifier); ok {
+		return closeNotifier.CloseNotify()
 	}
 
-	return make(<-chan bool)
+	notify := make(chan bool, 1)
+
+	if wrapper.requestContext == nil {
+		return notify
+	}
+
+	go func() {
+		<-wrapper.requestContext.Done()
+
+		notify <- true
+	}()
+
+	return notify
 }
 
 // Hijack hijacks the connection.
