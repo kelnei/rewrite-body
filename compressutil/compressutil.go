@@ -5,25 +5,32 @@ import (
 	"bytes"
 	"compress/flate"
 	"compress/gzip"
+	"fmt"
 	"io"
 	"log"
 )
 
 // ReaderError for notating that an error occurred while reading compressed data.
 type ReaderError struct {
-	error
-
 	cause error
+}
+
+// Error implements the error interface.
+func (readerError *ReaderError) Error() string {
+	return fmt.Sprintf("unable to read compressed data: %v", readerError.cause)
+}
+
+// Unwrap returns the failure this error was built from, so that errors.Is and
+// errors.As can reach it.
+func (readerError *ReaderError) Unwrap() error {
+	return readerError.cause
 }
 
 // Decode data in a bytes.Reader based on supplied encoding.
 func Decode(byteReader *bytes.Buffer, encoding string) ([]byte, error) {
 	reader, err := getRawReader(byteReader, encoding)
 	if err != nil {
-		return nil, &ReaderError{
-			error: err,
-			cause: err,
-		}
+		return nil, &ReaderError{cause: err}
 	}
 
 	return io.ReadAll(reader)
