@@ -17,6 +17,17 @@ type TestStruct struct {
 	shouldMatch bool
 }
 
+// payload is the decoded content every fixture in this file carries.
+const payload = "foo is the new bar"
+
+var normalBytes = []byte(payload)
+
+// gzippedBytes is that content in the gzip format of RFC 1952.
+var gzippedBytes = []byte{
+	31, 139, 8, 0, 0, 0, 0, 0, 0, 255, 74, 203, 207, 87, 200, 44, 86, 40, 201, 72, 85,
+	200, 75, 45, 87, 72, 74, 44, 2, 4, 0, 0, 255, 255, 251, 28, 166, 187, 18, 0, 0, 0,
+}
+
 // zlibBytes is "foo is the new bar" in the zlib format of RFC 1950, which is
 // what HTTP means by Content-Encoding: deflate: the rawDeflateBytes payload
 // below wrapped in a 2 byte header and a 4 byte adler32 checksum.
@@ -34,15 +45,6 @@ var rawDeflateBytes = []byte{
 }
 
 func TestEncode(t *testing.T) {
-	var (
-		deflatedBytes = zlibBytes
-		gzippedBytes  = []byte{
-			31, 139, 8, 0, 0, 0, 0, 0, 0, 255, 74, 203, 207, 87, 200, 44, 86, 40, 201, 72, 85,
-			200, 75, 45, 87, 72, 74, 44, 2, 4, 0, 0, 255, 255, 251, 28, 166, 187, 18, 0, 0, 0,
-		}
-		normalBytes = []byte("foo is the new bar")
-	)
-
 	tests := []TestStruct{
 		{
 			desc:        "should support identity",
@@ -61,7 +63,7 @@ func TestEncode(t *testing.T) {
 		{
 			desc:        "should support deflate",
 			input:       normalBytes,
-			expected:    deflatedBytes,
+			expected:    zlibBytes,
 			encoding:    compressutil.Deflate,
 			shouldMatch: false,
 		},
@@ -101,8 +103,6 @@ func TestEncode(t *testing.T) {
 }
 
 func TestDecodeDeflateAcceptsBothWireFormats(t *testing.T) {
-	const expected = "foo is the new bar"
-
 	tests := []struct {
 		desc  string
 		input []byte
@@ -124,17 +124,15 @@ func TestDecodeDeflateAcceptsBothWireFormats(t *testing.T) {
 				t.Fatalf("unexpected error: %v", err)
 			}
 
-			if string(decoded) != expected {
-				t.Errorf("got %q, want %q", decoded, expected)
+			if string(decoded) != payload {
+				t.Errorf("got %q, want %q", decoded, payload)
 			}
 		})
 	}
 }
 
 func TestEncodeDeflateRoundTrips(t *testing.T) {
-	const expected = "foo is the new bar"
-
-	encoded, err := compressutil.Encode([]byte(expected), compressutil.Deflate)
+	encoded, err := compressutil.Encode(normalBytes, compressutil.Deflate)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -150,8 +148,8 @@ func TestEncodeDeflateRoundTrips(t *testing.T) {
 		t.Fatalf("unexpected error decoding: %v", err)
 	}
 
-	if string(decoded) != expected {
-		t.Errorf("got %q, want %q", decoded, expected)
+	if string(decoded) != payload {
+		t.Errorf("got %q, want %q", decoded, payload)
 	}
 }
 
@@ -174,15 +172,6 @@ func TestDecodeErrorUnwraps(t *testing.T) {
 }
 
 func TestDecode(t *testing.T) {
-	var (
-		deflatedBytes = zlibBytes
-		gzippedBytes  = []byte{
-			31, 139, 8, 0, 0, 0, 0, 0, 0, 255, 74, 203, 207, 87, 200, 44, 86, 40, 201, 72, 85,
-			200, 75, 45, 87, 72, 74, 44, 2, 4, 0, 0, 255, 255, 251, 28, 166, 187, 18, 0, 0, 0,
-		}
-		normalBytes = []byte("foo is the new bar")
-	)
-
 	tests := []TestStruct{
 		{
 			desc:        "should support identity",
@@ -200,7 +189,7 @@ func TestDecode(t *testing.T) {
 		},
 		{
 			desc:        "should support deflate",
-			input:       deflatedBytes,
+			input:       zlibBytes,
 			expected:    normalBytes,
 			encoding:    compressutil.Deflate,
 			shouldMatch: false,

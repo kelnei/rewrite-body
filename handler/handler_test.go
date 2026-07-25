@@ -203,6 +203,42 @@ func compressString(value string, encoding string) string {
 	return string(compressed)
 }
 
+// fooToBar is the rewrite most of the tests below exercise.
+var fooToBar = []Rewrite{{Regex: "foo", Replacement: "bar"}}
+
+// newTestHandler builds the plugin around next, logging at Error so a test run
+// stays readable.
+func newTestHandler(t *testing.T, rewrites []Rewrite, next http.HandlerFunc) http.Handler {
+	t.Helper()
+
+	config := &Config{
+		Rewrites: rewrites,
+		LogLevel: 2,
+	}
+
+	rewriteBody, err := New(context.Background(), next, config, "rewriteBody")
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	return rewriteBody
+}
+
+// serveGet sends a GET carrying the given Accept header, omitting the header
+// entirely when accept is empty, and returns what the client would receive.
+func serveGet(handler http.Handler, accept string) *httptest.ResponseRecorder {
+	recorder := httptest.NewRecorder()
+	req := httptest.NewRequest(http.MethodGet, "/", nil)
+
+	if accept != "" {
+		req.Header.Set("Accept", accept)
+	}
+
+	handler.ServeHTTP(recorder, req)
+
+	return recorder
+}
+
 func TestAcceptHeaderGating(t *testing.T) {
 	const resBody = "foo is the new bar"
 
@@ -240,16 +276,6 @@ func TestAcceptHeaderGating(t *testing.T) {
 
 	for _, test := range tests {
 		t.Run(test.desc, func(t *testing.T) {
-			config := &Config{
-				Rewrites: []Rewrite{
-					{
-						Regex:       "foo",
-						Replacement: "bar",
-					},
-				},
-				LogLevel: 2,
-			}
-
 			next := func(responseWriter http.ResponseWriter, _ *http.Request) {
 				responseWriter.Header().Set("Content-Type", test.contentType)
 				responseWriter.WriteHeader(http.StatusOK)
@@ -257,19 +283,7 @@ func TestAcceptHeaderGating(t *testing.T) {
 				_, _ = responseWriter.Write([]byte(resBody))
 			}
 
-			rewriteBody, err := New(context.Background(), http.HandlerFunc(next), config, "rewriteBody")
-			if err != nil {
-				t.Fatal(err)
-			}
-
-			recorder := httptest.NewRecorder()
-			req := httptest.NewRequest(http.MethodGet, "/", nil)
-
-			if test.accept != "" {
-				req.Header.Set("Accept", test.accept)
-			}
-
-			rewriteBody.ServeHTTP(recorder, req)
+			recorder := serveGet(newTestHandler(t, fooToBar, next), test.accept)
 
 			if recorder.Body.String() != test.expResBody {
 				t.Errorf("got body %q, want %q", recorder.Body.String(), test.expResBody)
@@ -285,16 +299,6 @@ func TestUndecodableBodyIsPassedThroughIntact(t *testing.T) {
 	// to failing.
 	resBody := "this is not gzip data at all, it is plain text"
 
-	config := &Config{
-		Rewrites: []Rewrite{
-			{
-				Regex:       "foo",
-				Replacement: "bar",
-			},
-		},
-		LogLevel: 2,
-	}
-
 	next := func(responseWriter http.ResponseWriter, _ *http.Request) {
 		responseWriter.Header().Set("Content-Encoding", compressutil.Gzip)
 		responseWriter.Header().Set("Content-Type", "text/html")
@@ -303,16 +307,7 @@ func TestUndecodableBodyIsPassedThroughIntact(t *testing.T) {
 		_, _ = responseWriter.Write([]byte(resBody))
 	}
 
-	rewriteBody, err := New(context.Background(), http.HandlerFunc(next), config, "rewriteBody")
-	if err != nil {
-		t.Fatal(err)
-	}
-
-	recorder := httptest.NewRecorder()
-	req := httptest.NewRequest(http.MethodGet, "/", nil)
-	req.Header.Set("Accept", "text/html")
-
-	rewriteBody.ServeHTTP(recorder, req)
+	recorder := serveGet(newTestHandler(t, fooToBar, next), "text/html")
 
 	if recorder.Body.String() != resBody {
 		t.Errorf("got body %q, want the original %q", recorder.Body.String(), resBody)
@@ -326,15 +321,7 @@ func TestMatchSpanningWrites(t *testing.T) {
 	// boundary still has to be found. (traefik/plugin-rewritebody#28)
 	chunks := []string{"<html><body>foo ", "is the", " new bar</body>", "</html>"}
 
-	config := &Config{
-		Rewrites: []Rewrite{
-			{
-				Regex:       "foo is the new",
-				Replacement: "bar is the new",
-			},
-		},
-		LogLevel: 2,
-	}
+	rewrites := []Rewrite{{Regex: "foo is the new", Replacement: "bar is the new"}}
 
 	next := func(responseWriter http.ResponseWriter, _ *http.Request) {
 		responseWriter.Header().Set("Content-Type", "text/html")
@@ -345,16 +332,7 @@ func TestMatchSpanningWrites(t *testing.T) {
 		}
 	}
 
-	rewriteBody, err := New(context.Background(), http.HandlerFunc(next), config, "rewriteBody")
-	if err != nil {
-		t.Fatal(err)
-	}
-
-	recorder := httptest.NewRecorder()
-	req := httptest.NewRequest(http.MethodGet, "/", nil)
-	req.Header.Set("Accept", "text/html")
-
-	rewriteBody.ServeHTTP(recorder, req)
+	recorder := serveGet(newTestHandler(t, rewrites, next), "text/html")
 
 	want := "<html><body>bar is the new bar</body></html>"
 	if recorder.Body.String() != want {
@@ -392,31 +370,14 @@ func TestPanicHandling(t *testing.T) {
 
 	for _, test := range tests {
 		t.Run(test.desc, func(t *testing.T) {
-			config := &Config{
-				Rewrites: []Rewrite{
-					{
-						Regex:       "foo",
-						Replacement: "bar",
-					},
-				},
-				LogLevel: 2,
-			}
-
 			next := func(_ http.ResponseWriter, _ *http.Request) {
 				panic(test.panicValue)
 			}
 
-			rewriteBody, err := New(context.Background(), http.HandlerFunc(next), config, "rewriteBody")
-			if err != nil {
-				t.Fatal(err)
-			}
-
-			recorder := httptest.NewRecorder()
-			req := httptest.NewRequest(http.MethodGet, "/", nil)
-			req.Header.Set("Accept", "text/html")
+			rewriteBody := newTestHandler(t, fooToBar, next)
 
 			recovery := catchPanic(func() {
-				rewriteBody.ServeHTTP(recorder, req)
+				serveGet(rewriteBody, "text/html")
 			})
 
 			if !test.expPanic {

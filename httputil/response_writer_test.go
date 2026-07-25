@@ -20,12 +20,7 @@ func newTestWrapperWithContext(
 	requestContext context.Context,
 	responseWriter http.ResponseWriter,
 ) *ResponseWrapper {
-	monitoring := MonitoringConfig{
-		Types:   []string{"text/html"},
-		Methods: []string{http.MethodGet},
-	}
-
-	return WrapWriter(requestContext, responseWriter, monitoring, *logger.CreateLogger(logger.Error), true)
+	return WrapWriter(requestContext, responseWriter, defaultMonitoring, *logger.CreateLogger(logger.Error), true)
 }
 
 func TestSetContent(t *testing.T) {
