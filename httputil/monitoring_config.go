@@ -1,6 +1,9 @@
 package httputil
 
-import "net/http"
+import (
+	"net/http"
+	"strings"
+)
 
 // MonitoringConfig structure of data for handling configuration for
 // controlling what content is monitored.
@@ -18,4 +21,28 @@ func (config *MonitoringConfig) EnsureDefaults() {
 	if len(config.Types) == 0 {
 		config.Types = []string{"text/html"}
 	}
+}
+
+// MatchesType reports whether a media type header names a monitored type.
+//
+// The header may be a response Content-Type or a request Accept, so a monitored
+// type is also matched through the range that covers it: an Accept of text/*
+// leaves room for text/html.
+func (config *MonitoringConfig) MatchesType(header string) bool {
+	for _, monitoredType := range config.Types {
+		if strings.Contains(header, monitoredType) {
+			return true
+		}
+
+		separator := strings.Index(monitoredType, "/")
+		if separator < 0 {
+			continue
+		}
+
+		if strings.Contains(header, monitoredType[:separator+1]+"*") {
+			return true
+		}
+	}
+
+	return false
 }

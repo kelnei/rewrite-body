@@ -146,30 +146,7 @@ func (req *RequestWrapper) acceptsMonitoredType() bool {
 		return true
 	}
 
-	for _, monitoredType := range req.monitoring.Types {
-		if strings.Contains(acceptHeader, monitoredType) {
-			return true
-		}
-
-		// A range wildcard covering a monitored type, such as text/* for
-		// text/html, leaves the response type open as well.
-		if strings.Contains(acceptHeader, typeRange(monitoredType)) {
-			return true
-		}
-	}
-
-	return false
-}
-
-// typeRange converts a content type into the Accept range that covers it:
-// text/html becomes text/*.
-func typeRange(contentType string) string {
-	separator := strings.Index(contentType, "/")
-	if separator < 0 {
-		return contentType
-	}
-
-	return contentType[:separator+1] + "*"
+	return req.monitoring.MatchesType(acceptHeader)
 }
 
 // SupportsProcessing determine if http.Request is supported by this plugin.
