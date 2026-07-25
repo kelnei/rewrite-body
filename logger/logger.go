@@ -4,6 +4,7 @@ package logger
 import (
 	"bytes"
 	"fmt"
+	"io"
 	"log"
 	"os"
 )
@@ -30,34 +31,49 @@ type LogWriter struct {
 	loggers map[LogLevel]*log.Logger
 }
 
+const logFlags = log.Ldate | log.Ltime | log.Lshortfile
+
+// levelNames the label each level is written under.
+var levelNames = map[LogLevel]string{
+	Trace:   "TRACE",
+	Debug:   "DEBUG",
+	Info:    "INFO",
+	Warning: "WARNING",
+	Error:   "ERROR",
+}
+
+// newLoggers build one log.Logger per level, sending Error to errorOutput and
+// everything else to output.
+func newLoggers(output io.Writer, errorOutput io.Writer) map[LogLevel]*log.Logger {
+	loggers := make(map[LogLevel]*log.Logger, len(levelNames))
+
+	for level, name := range levelNames {
+		levelOutput := output
+		if level == Error {
+			levelOutput = errorOutput
+		}
+
+		// The trailing separator matters. log.Ldate writes the date straight after
+		// the prefix, so a prefix ending in the level name ran the two together as
+		// "Rewrite-Body | DEBUG2026/07/24 20:31:41".
+		loggers[level] = log.New(levelOutput, "Rewrite-Body | "+name+" | ", logFlags)
+	}
+
+	return loggers
+}
+
 // CreateLogger create the LogWriter struct with required content.
 func CreateLogger(level LogLevel) *LogWriter {
-	loggers := make(map[LogLevel]*log.Logger, Error-1)
-
-	loggers[Trace] = log.New(os.Stdout, "Rewrite-Body | TRACE", log.Ldate|log.Ltime|log.Lshortfile)
-	loggers[Debug] = log.New(os.Stdout, "Rewrite-Body | DEBUG", log.Ldate|log.Ltime|log.Lshortfile)
-	loggers[Info] = log.New(os.Stdout, "Rewrite-Body | INFO", log.Ldate|log.Ltime|log.Lshortfile)
-	loggers[Warning] = log.New(os.Stdout, "Rewrite-Body | WARNING", log.Ldate|log.Ltime|log.Lshortfile)
-	loggers[Error] = log.New(os.Stderr, "Rewrite-Body | ERROR", log.Ldate|log.Ltime|log.Lshortfile)
-
 	return &LogWriter{
 		level:   level,
-		loggers: loggers,
+		loggers: newLoggers(os.Stdout, os.Stderr),
 	}
 }
 
 func createLoggerWithBuffer(level LogLevel, buffer *bytes.Buffer) *LogWriter {
-	loggers := make(map[LogLevel]*log.Logger, Error-1)
-
-	loggers[Trace] = log.New(buffer, "Rewrite-Body | TRACE", log.Ldate|log.Ltime|log.Lshortfile)
-	loggers[Debug] = log.New(buffer, "Rewrite-Body | DEBUG", log.Ldate|log.Ltime|log.Lshortfile)
-	loggers[Info] = log.New(buffer, "Rewrite-Body | INFO", log.Ldate|log.Ltime|log.Lshortfile)
-	loggers[Warning] = log.New(buffer, "Rewrite-Body | WARNING", log.Ldate|log.Ltime|log.Lshortfile)
-	loggers[Error] = log.New(buffer, "Rewrite-Body | ERROR", log.Ldate|log.Ltime|log.Lshortfile)
-
 	return &LogWriter{
 		level:   level,
-		loggers: loggers,
+		loggers: newLoggers(buffer, buffer),
 	}
 }
 

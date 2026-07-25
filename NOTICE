@@ -22,7 +22,11 @@ upstream v1.2.0 (commit a37d560, 24 November 2022):
     whole response body twice per request, this allocated roughly twice the
     page size on every request even with logging disabled.
 
-  * logger/logger_format_test.go was added to cover the above.
+  * logger/logger.go: the log prefix now ends with a separator. log.Ldate writes
+    the date immediately after the prefix, so every line previously ran the level
+    into the timestamp as "Rewrite-Body | DEBUG2026/07/24 20:31:41".
+
+  * logger/logger_format_test.go was added to cover both of the above.
 
   * handler/handler.go: http.ErrAbortHandler is re-panicked instead of being
     recovered. Recovering it made ServeHTTP return normally, so the server
