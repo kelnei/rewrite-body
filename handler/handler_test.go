@@ -354,6 +354,29 @@ func TestMatchSpanningWrites(t *testing.T) {
 	}
 }
 
+func TestRewritesAfterEarlyHints(t *testing.T) {
+	// A backend that preloads assets answers with 103 and its link headers before
+	// the response proper. Traefik forwards that interim response through the
+	// middleware chain, so the plugin has to recognize it as a preamble and go on
+	// waiting for the status and Content-Type that decide anything.
+	next := func(responseWriter http.ResponseWriter, _ *http.Request) {
+		responseWriter.Header().Set("Link", "</style.css>; rel=preload")
+		responseWriter.WriteHeader(http.StatusEarlyHints)
+		responseWriter.Header().Del("Link")
+
+		responseWriter.Header().Set("Content-Type", "text/html; charset=utf-8")
+		responseWriter.WriteHeader(http.StatusOK)
+
+		_, _ = responseWriter.Write([]byte("foo is the new bar"))
+	}
+
+	recorder := serveGet(newTestHandler(t, fooToBar, next), "text/html")
+
+	if got := recorder.Body.String(); got != "bar is the new bar" {
+		t.Errorf("got body %q, want it rewritten to %q", got, "bar is the new bar")
+	}
+}
+
 func TestForwardedResponseStreamsWhileTheBackendWrites(t *testing.T) {
 	// An Accept header cannot tell us a response will be unrewritable, so a
 	// stream reaches the plugin like anything else -- here with no Accept at all,

@@ -66,6 +66,19 @@ func (wrapper *ResponseWrapper) WriteHeader(statusCode int) {
 		return
 	}
 
+	// An informational response is a preamble, not the response. A backend
+	// sending 103 Early Hints gets here with nothing but Link headers, and the
+	// real status and Content-Type follow, so there is nothing to decide from yet
+	// and nothing to record: pass it through and keep waiting. Traefik's proxy
+	// forwards these the same way net/http's does, by writing them to the
+	// ResponseWriter, and net/http's own writer likewise leaves its state alone.
+	// 101 is excluded because a protocol switch is the final response.
+	if isInformational(statusCode) {
+		wrapper.ResponseWriter.WriteHeader(statusCode)
+
+		return
+	}
+
 	wrapper.code = statusCode
 	wrapper.wroteHeader = true
 	wrapper.passThrough = !wrapper.canRewrite()
@@ -83,6 +96,16 @@ func (wrapper *ResponseWrapper) WriteHeader(statusCode int) {
 	}
 
 	wrapper.ResponseWriter.WriteHeader(statusCode)
+}
+
+// isInformational reports whether a status code belongs to a 1xx response that
+// another response is still to follow.
+func isInformational(statusCode int) bool {
+	if statusCode == http.StatusSwitchingProtocols {
+		return false
+	}
+
+	return statusCode >= http.StatusContinue && statusCode < http.StatusOK
 }
 
 // Write buffers data for rewriting, or forwards it to the client when this

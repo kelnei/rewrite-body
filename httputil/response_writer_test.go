@@ -173,6 +173,42 @@ func TestWriteBuffersOnlyWhatItCanRewrite(t *testing.T) {
 	}
 }
 
+func TestWriteHeaderWaitsOutAnInformationalResponse(t *testing.T) {
+	const body = "foo is the new bar"
+
+	recorder := httptest.NewRecorder()
+	wrapper := newTestWrapper(recorder)
+
+	// 103 Early Hints, delivered the way a reverse proxy delivers one: the interim
+	// headers are written into the header map, the status goes out, and the map is
+	// cleared for the response that follows. Deciding anything from a preamble
+	// that carries no Content-Type would forward the real body unrewritten.
+	wrapper.Header().Set("Link", "</style.css>; rel=preload")
+	wrapper.WriteHeader(http.StatusEarlyHints)
+	wrapper.Header().Del("Link")
+
+	wrapper.Header().Set("Content-Type", "text/html; charset=utf-8")
+	wrapper.WriteHeader(http.StatusOK)
+
+	if _, err := wrapper.Write([]byte(body)); err != nil {
+		t.Fatal(err)
+	}
+
+	if !wrapper.SupportsProcessing() {
+		t.Error("stopped processing a monitored response because a 103 arrived first")
+	}
+
+	if got := wrapper.GetBuffer().String(); got != body {
+		t.Errorf("got buffer %q, want the whole body %q", got, body)
+	}
+
+	// httptest.ResponseRecorder has no 1xx handling of its own -- it latches the
+	// first code it is given -- so the status it recorded says nothing here.
+	if recorder.Body.Len() != 0 {
+		t.Errorf("sent %q to the client before the rewrite ran", recorder.Body)
+	}
+}
+
 func TestFlushSendsAForwardedResponseWithoutWaiting(t *testing.T) {
 	// A response the plugin cannot rewrite has to stream: the client gets each
 	// flushed chunk when the backend sends it, not when the request ends.
