@@ -171,6 +171,23 @@ func TestDecodeErrorUnwraps(t *testing.T) {
 	}
 }
 
+func TestDecodeTruncatedGzipErrorUnwraps(t *testing.T) {
+	// A truncated response gets past the gzip header and then ends, so the
+	// failure comes from the read rather than the header. Callers still have to
+	// be able to recognize it as a ReaderError.
+	truncated := bytes.NewBuffer(gzippedBytes[:len(gzippedBytes)-8])
+
+	_, err := compressutil.Decode(truncated, compressutil.Gzip)
+	if err == nil {
+		t.Fatal("expected an error decoding a truncated gzip body")
+	}
+
+	var readerError *compressutil.ReaderError
+	if !errors.As(err, &readerError) {
+		t.Errorf("got %T, want a *compressutil.ReaderError", err)
+	}
+}
+
 func TestDecode(t *testing.T) {
 	tests := []TestStruct{
 		{
