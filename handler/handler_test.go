@@ -3,6 +3,7 @@ package handler
 import (
 	"bytes"
 	"context"
+	"errors"
 	"fmt"
 	"net/http"
 	"net/http/httptest"
@@ -200,6 +201,91 @@ func compressString(value string, encoding string) string {
 	compressed, _ := compressutil.Encode([]byte(value), encoding)
 
 	return string(compressed)
+}
+
+func TestPanicHandling(t *testing.T) {
+	tests := []struct {
+		desc       string
+		panicValue interface{}
+		expPanic   bool
+	}{
+		{
+			desc:       "should re-panic http.ErrAbortHandler so net/http can abort the response",
+			panicValue: http.ErrAbortHandler,
+			expPanic:   true,
+		},
+		{
+			desc:       "should re-panic an error wrapping http.ErrAbortHandler",
+			panicValue: fmt.Errorf("upstream gave up: %w", http.ErrAbortHandler),
+			expPanic:   true,
+		},
+		{
+			desc:       "should recover an unrelated error",
+			panicValue: errors.New("something unexpected"),
+			expPanic:   false,
+		},
+		{
+			desc:       "should recover a panic value that is not an error",
+			panicValue: "something unexpected",
+			expPanic:   false,
+		},
+	}
+
+	for _, test := range tests {
+		t.Run(test.desc, func(t *testing.T) {
+			config := &Config{
+				Rewrites: []Rewrite{
+					{
+						Regex:       "foo",
+						Replacement: "bar",
+					},
+				},
+				LogLevel: 2,
+			}
+
+			next := func(_ http.ResponseWriter, _ *http.Request) {
+				panic(test.panicValue)
+			}
+
+			rewriteBody, err := New(context.Background(), http.HandlerFunc(next), config, "rewriteBody")
+			if err != nil {
+				t.Fatal(err)
+			}
+
+			recorder := httptest.NewRecorder()
+			req := httptest.NewRequest(http.MethodGet, "/", nil)
+			req.Header.Set("Accept", "text/html")
+
+			recovery := catchPanic(func() {
+				rewriteBody.ServeHTTP(recorder, req)
+			})
+
+			if !test.expPanic {
+				if recovery != nil {
+					t.Errorf("got propagated panic %v, want it recovered", recovery)
+				}
+
+				return
+			}
+
+			recoveredError, isError := recovery.(error)
+			if !isError || !errors.Is(recoveredError, http.ErrAbortHandler) {
+				t.Errorf("got panic %v, want an error matching http.ErrAbortHandler", recovery)
+			}
+		})
+	}
+}
+
+// catchPanic runs call and returns the value it panicked with, or nil if it
+// returned normally.
+func catchPanic(call func()) (recovery interface{}) {
+	defer func() {
+		recovery = recover()
+	}()
+
+	call()
+
+	return nil
 }
 
 func TestNew(t *testing.T) {
