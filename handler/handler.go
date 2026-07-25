@@ -74,6 +74,7 @@ func (bodyRewrite *rewriteBody) ServeHTTP(response http.ResponseWriter, req *htt
 	bodyRewrite.logger.LogDebugf("Starting supported request: %v", req)
 
 	wrappedWriter := httputil.WrapWriter(
+		req.Context(),
 		response,
 		bodyRewrite.monitoringConfig,
 		bodyRewrite.logger,
