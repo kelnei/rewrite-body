@@ -178,6 +178,16 @@ func (req *RequestWrapper) SupportsProcessing() bool {
 		return false
 	}
 
+	// A response to HEAD carries no body, so there is nothing here to rewrite.
+	// Processing one is actively harmful: the wrapper drops the upstream
+	// Content-Length on the way through and no body is ever written to replace
+	// it, which leaves the response with no framing at all -- the client waits
+	// for bytes that never arrive. Skip HEAD even when it is configured as a
+	// monitored method.
+	if req.Method == http.MethodHead {
+		return false
+	}
+
 	isSupported := false
 
 	// Ignore non GET requests. Methods are exact tokens, so this compares whole

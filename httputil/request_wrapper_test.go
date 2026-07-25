@@ -256,6 +256,16 @@ func TestSupportsProcessing(t *testing.T) {
 			},
 		},
 		{
+			desc:            "Does not support HEAD even when it is configured",
+			inputType:       "text/html",
+			inputMethod:     http.MethodHead,
+			expectedSupport: false,
+			monitoringConfig: MonitoringConfig{
+				Types:   []string{"text/html"},
+				Methods: []string{"GET", "HEAD"},
+			},
+		},
+		{
 			desc:            "Does not support a method that merely contains a monitored method",
 			inputType:       "text/html",
 			inputMethod:     "GETX",
