@@ -150,11 +150,10 @@ func (req *RequestWrapper) acceptsMonitoredType() bool {
 }
 
 // SupportsProcessing determine if http.Request is supported by this plugin.
+//
+// The checks run cheapest first: rejecting on the method costs a comparison,
+// while the Accept header check scans a header value once per monitored type.
 func (req *RequestWrapper) SupportsProcessing() bool {
-	if !req.acceptsMonitoredType() {
-		return false
-	}
-
 	// A response to HEAD carries no body, so there is nothing here to rewrite.
 	// Processing one is actively harmful: the wrapper drops the upstream
 	// Content-Length on the way through and no body is ever written to replace
@@ -165,20 +164,7 @@ func (req *RequestWrapper) SupportsProcessing() bool {
 		return false
 	}
 
-	isSupported := false
-
-	// Ignore non GET requests. Methods are exact tokens, so this compares whole
-	// values: a substring match would let a monitored GET pick up any method
-	// containing it, and would make an empty configured method match everything.
-	for _, monitoredMethod := range req.monitoring.Methods {
-		if req.Method == monitoredMethod {
-			isSupported = true
-
-			break
-		}
-	}
-
-	if !isSupported {
+	if !req.hasMonitoredMethod() {
 		return false
 	}
 
@@ -186,5 +172,20 @@ func (req *RequestWrapper) SupportsProcessing() bool {
 		return false
 	}
 
-	return true
+	return req.acceptsMonitoredType()
+}
+
+// hasMonitoredMethod reports whether the request uses a monitored method.
+//
+// Methods are exact tokens, so this compares whole values: a substring match
+// would let a monitored GET pick up any method containing it, and would make an
+// empty configured method match everything.
+func (req *RequestWrapper) hasMonitoredMethod() bool {
+	for _, monitoredMethod := range req.monitoring.Methods {
+		if req.Method == monitoredMethod {
+			return true
+		}
+	}
+
+	return false
 }
