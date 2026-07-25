@@ -9,6 +9,28 @@ import (
 	"github.com/kelnei/rewrite-body/logger"
 )
 
+// defaultMonitoring is the configuration this package's tests use when the
+// monitored types and methods are not what is under test.
+var defaultMonitoring = MonitoringConfig{
+	Types:   []string{"text/html"},
+	Methods: []string{http.MethodGet},
+}
+
+func newTestRequest(t *testing.T, method string) *http.Request {
+	t.Helper()
+
+	request, err := http.NewRequestWithContext(
+		context.Background(),
+		method,
+		"http://google.com",
+		&bytes.Reader{})
+	if err != nil {
+		t.Fatalf("Error creating request: %v", err)
+	}
+
+	return request
+}
+
 func TestGetEncodingTarget(t *testing.T) {
 	tests := []struct {
 		desc           string
@@ -52,24 +74,11 @@ func TestGetEncodingTarget(t *testing.T) {
 		},
 	}
 
-	defaultMonitoring := MonitoringConfig{
-		Types:   []string{"text/html"},
-		Methods: []string{"GET"},
-	}
-
 	defaultLogWriter := logger.CreateLogger(logger.Error)
 
 	for _, test := range tests {
 		t.Run(test.desc, func(t *testing.T) {
-			request, err := http.NewRequestWithContext(
-				context.Background(),
-				http.MethodGet,
-				"http://google.com",
-				&bytes.Reader{})
-			if err != nil {
-				t.Errorf("Error creating request: %v", err)
-			}
-
+			request := newTestRequest(t, http.MethodGet)
 			request.Header.Set("Accept-Encoding", test.acceptEncoding)
 
 			wrappedRequest := WrapRequest(request, defaultMonitoring, *defaultLogWriter)
@@ -120,24 +129,11 @@ func TestRemoveUnuspportedEncoding(t *testing.T) {
 		},
 	}
 
-	defaultMonitoring := MonitoringConfig{
-		Types:   []string{"text/html"},
-		Methods: []string{"GET"},
-	}
-
 	defaultLogWriter := logger.CreateLogger(logger.Error)
 
 	for _, test := range tests {
 		t.Run(test.desc, func(t *testing.T) {
-			request, err := http.NewRequestWithContext(
-				context.Background(),
-				http.MethodGet,
-				"http://google.com",
-				&bytes.Reader{})
-			if err != nil {
-				t.Errorf("Error creating request: %v", err)
-			}
-
+			request := newTestRequest(t, http.MethodGet)
 			request.Header.Set("Accept-Encoding", test.acceptEncoding)
 
 			wrappedRequest := WrapRequest(request, defaultMonitoring, *defaultLogWriter)
@@ -154,25 +150,12 @@ func TestSupportsProcessingSkipsWebsocketUpgrade(t *testing.T) {
 	// A websocket upgrade must be handed straight to the underlying writer.
 	// Buffering one would break the connection, which is what upstream saw as a
 	// panic on upgrade. (traefik/plugin-rewritebody#15)
-	monitoring := MonitoringConfig{
-		Types:   []string{"text/html"},
-		Methods: []string{http.MethodGet},
-	}
-
-	request, err := http.NewRequestWithContext(
-		context.Background(),
-		http.MethodGet,
-		"http://google.com",
-		&bytes.Reader{})
-	if err != nil {
-		t.Fatalf("Error creating request: %v", err)
-	}
-
+	request := newTestRequest(t, http.MethodGet)
 	request.Header.Set("Accept", "text/html")
 	request.Header.Set("Connection", "Upgrade")
 	request.Header.Set("Upgrade", "websocket")
 
-	wrappedRequest := WrapRequest(request, monitoring, *logger.CreateLogger(logger.Error))
+	wrappedRequest := WrapRequest(request, defaultMonitoring, *logger.CreateLogger(logger.Error))
 
 	if wrappedRequest.SupportsProcessing() {
 		t.Error("a websocket upgrade must not be processed")
@@ -323,15 +306,7 @@ func TestSupportsProcessing(t *testing.T) {
 
 	for _, test := range tests {
 		t.Run(test.desc, func(t *testing.T) {
-			request, err := http.NewRequestWithContext(
-				context.Background(),
-				test.inputMethod,
-				"http://google.com",
-				&bytes.Reader{})
-			if err != nil {
-				t.Errorf("Error creating request: %v", err)
-			}
-
+			request := newTestRequest(t, test.inputMethod)
 			request.Header.Set("Accept", test.inputType)
 
 			wrappedRequest := WrapRequest(request, test.monitoringConfig, *defaultLogWriter)
