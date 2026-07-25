@@ -319,6 +319,49 @@ func TestUndecodableBodyIsPassedThroughIntact(t *testing.T) {
 	}
 }
 
+func TestMatchSpanningWrites(t *testing.T) {
+	// The backend may deliver a body across any number of writes, and with
+	// Transfer-Encoding: chunked those boundaries are not ours to choose. The
+	// whole body is buffered before any regex runs, so a match that straddles a
+	// boundary still has to be found. (traefik/plugin-rewritebody#28)
+	chunks := []string{"<html><body>foo ", "is the", " new bar</body>", "</html>"}
+
+	config := &Config{
+		Rewrites: []Rewrite{
+			{
+				Regex:       "foo is the new",
+				Replacement: "bar is the new",
+			},
+		},
+		LogLevel: 2,
+	}
+
+	next := func(responseWriter http.ResponseWriter, _ *http.Request) {
+		responseWriter.Header().Set("Content-Type", "text/html")
+		responseWriter.WriteHeader(http.StatusOK)
+
+		for _, chunk := range chunks {
+			_, _ = responseWriter.Write([]byte(chunk))
+		}
+	}
+
+	rewriteBody, err := New(context.Background(), http.HandlerFunc(next), config, "rewriteBody")
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	recorder := httptest.NewRecorder()
+	req := httptest.NewRequest(http.MethodGet, "/", nil)
+	req.Header.Set("Accept", "text/html")
+
+	rewriteBody.ServeHTTP(recorder, req)
+
+	want := "<html><body>bar is the new bar</body></html>"
+	if recorder.Body.String() != want {
+		t.Errorf("got body %q, want %q", recorder.Body.String(), want)
+	}
+}
+
 func TestPanicHandling(t *testing.T) {
 	tests := []struct {
 		desc       string

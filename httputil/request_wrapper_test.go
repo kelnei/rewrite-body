@@ -150,6 +150,35 @@ func TestRemoveUnuspportedEncoding(t *testing.T) {
 	}
 }
 
+func TestSupportsProcessingSkipsWebsocketUpgrade(t *testing.T) {
+	// A websocket upgrade must be handed straight to the underlying writer.
+	// Buffering one would break the connection, which is what upstream saw as a
+	// panic on upgrade. (traefik/plugin-rewritebody#15)
+	monitoring := MonitoringConfig{
+		Types:   []string{"text/html"},
+		Methods: []string{http.MethodGet},
+	}
+
+	request, err := http.NewRequestWithContext(
+		context.Background(),
+		http.MethodGet,
+		"http://google.com",
+		&bytes.Reader{})
+	if err != nil {
+		t.Fatalf("Error creating request: %v", err)
+	}
+
+	request.Header.Set("Accept", "text/html")
+	request.Header.Set("Connection", "Upgrade")
+	request.Header.Set("Upgrade", "websocket")
+
+	wrappedRequest := WrapRequest(request, monitoring, *logger.CreateLogger(logger.Error))
+
+	if wrappedRequest.SupportsProcessing() {
+		t.Error("a websocket upgrade must not be processed")
+	}
+}
+
 func TestSupportsProcessing(t *testing.T) {
 	tests := []struct {
 		desc             string
