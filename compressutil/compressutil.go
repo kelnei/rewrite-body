@@ -77,54 +77,36 @@ func decodeDeflate(data []byte) ([]byte, error) {
 
 // Encode data in a []byte based on supplied encoding.
 func Encode(data []byte, encoding string) ([]byte, error) {
+	var buf bytes.Buffer
+
 	switch encoding {
 	case Gzip:
-		return compressWithGzip(data)
+		return compress(data, &buf, gzip.NewWriter(&buf))
 
+	// HTTP's Content-Encoding: deflate asks for the zlib format of RFC 1950.
+	// This used to call compress/flate and emit raw DEFLATE instead; that
+	// round-tripped through this plugin's own decoder but would not decode
+	// anywhere that took the spec literally.
 	case Deflate:
-		return compressWithZlib(data)
+		return compress(data, &buf, zlib.NewWriter(&buf))
 
 	default:
 		return data, nil
 	}
 }
 
-func compressWithGzip(bodyBytes []byte) ([]byte, error) {
-	var buf bytes.Buffer
-	gzipWriter := gzip.NewWriter(&buf)
-
-	if _, err := gzipWriter.Write(bodyBytes); err != nil {
+// compress writes bodyBytes through writer and returns what buf collected.
+// Closing the writer is what flushes the final block and the format's trailer,
+// so it has to happen before the buffer is read.
+func compress(bodyBytes []byte, buf *bytes.Buffer, writer io.WriteCloser) ([]byte, error) {
+	if _, err := writer.Write(bodyBytes); err != nil {
 		log.Printf("unable to recompress rewrited body: %v", err)
 
 		return nil, err
 	}
 
-	if err := gzipWriter.Close(); err != nil {
-		log.Printf("unable to close gzip writer: %v", err)
-
-		return nil, err
-	}
-
-	return buf.Bytes(), nil
-}
-
-// compressWithZlib compresses in the zlib format of RFC 1950, which is what
-// HTTP's Content-Encoding: deflate actually asks for. This used to call
-// compress/flate and emit raw DEFLATE instead; that round-tripped through this
-// plugin's own decoder but would not decode anywhere that took the spec
-// literally.
-func compressWithZlib(bodyBytes []byte) ([]byte, error) {
-	var buf bytes.Buffer
-	zlibWriter := zlib.NewWriter(&buf)
-
-	if _, err := zlibWriter.Write(bodyBytes); err != nil {
-		log.Printf("unable to recompress rewrited body: %v", err)
-
-		return nil, err
-	}
-
-	if err := zlibWriter.Close(); err != nil {
-		log.Printf("unable to close zlib writer: %v", err)
+	if err := writer.Close(); err != nil {
+		log.Printf("unable to close compression writer: %v", err)
 
 		return nil, err
 	}
