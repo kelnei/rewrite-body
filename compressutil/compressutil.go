@@ -34,16 +34,31 @@ func Decode(byteReader *bytes.Buffer, encoding string) ([]byte, error) {
 		return decodeDeflate(byteReader.Bytes())
 
 	case Gzip:
-		gzipReader, err := gzip.NewReader(byteReader)
-		if err != nil {
-			return nil, &ReaderError{cause: err}
-		}
-
-		return io.ReadAll(gzipReader)
+		return decodeGzip(byteReader)
 
 	default:
 		return io.ReadAll(byteReader)
 	}
+}
+
+// decodeGzip reads a Content-Encoding: gzip body.
+//
+// Both failures are reported as a ReaderError: a body can fail on its header or
+// part way through the stream -- a truncated response has a valid header and
+// then ends -- and callers matching on the error type should not have to care
+// which of the two happened.
+func decodeGzip(byteReader *bytes.Buffer) ([]byte, error) {
+	gzipReader, err := gzip.NewReader(byteReader)
+	if err != nil {
+		return nil, &ReaderError{cause: err}
+	}
+
+	decoded, err := io.ReadAll(gzipReader)
+	if err != nil {
+		return nil, &ReaderError{cause: err}
+	}
+
+	return decoded, nil
 }
 
 // decodeDeflate reads a Content-Encoding: deflate body.
