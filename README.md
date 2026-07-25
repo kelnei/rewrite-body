@@ -91,6 +91,9 @@ http:
 
           # logLevel is optional, defaults to Info level.
           # Available logLevels: (Trace: -2, Debug: -1, Info: 0, Warning: 1, Error: 2)
+          # Debug logs the per-request routing decisions. Trace additionally dumps
+          # every response body before and after rewriting, so it is only usable
+          # for one-off debugging -- not on a busy route.
           logLevel: 0
 
           # monitoring is optional, defaults to below configuration

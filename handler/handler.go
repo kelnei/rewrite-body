@@ -89,7 +89,11 @@ func (bodyRewrite *rewriteBody) ServeHTTP(response http.ResponseWriter, req *htt
 		// We are ignoring these any errors because the content should be unchanged here.
 		// This could "error" if writing is not supported but content will return properly.
 		_, _ = response.Write(wrappedWriter.GetBuffer().Bytes())
-		bodyRewrite.logger.LogDebugf("Ignoring unsupported response: %v", wrappedWriter)
+		bodyRewrite.logger.LogDebugf(
+			"Ignoring unsupported response: content-type=%q content-encoding=%q",
+			wrappedWriter.Header().Get("Content-Type"),
+			wrappedWriter.Header().Get("Content-Encoding"),
+		)
 
 		return
 	}
@@ -105,7 +109,7 @@ func (bodyRewrite *rewriteBody) ServeHTTP(response http.ResponseWriter, req *htt
 		return
 	}
 
-	bodyRewrite.logger.LogDebugf("Response body: %s", bodyBytes)
+	bodyRewrite.logger.LogTracef("Response body: %s", bodyBytes)
 
 	if len(bodyBytes) == 0 {
 		// If the body is empty there is no purpose in continuing this process.
@@ -116,7 +120,7 @@ func (bodyRewrite *rewriteBody) ServeHTTP(response http.ResponseWriter, req *htt
 		bodyBytes = rwt.regex.ReplaceAll(bodyBytes, rwt.replacement)
 	}
 
-	bodyRewrite.logger.LogDebugf("Transformed body: %s", bodyBytes)
+	bodyRewrite.logger.LogTracef("Transformed body: %s", bodyBytes)
 
 	encoding := wrappedWriter.Header().Get("Content-Encoding")
 	wrappedWriter.SetContent(bodyBytes, encoding)
