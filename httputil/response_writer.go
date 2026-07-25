@@ -196,6 +196,10 @@ func (wrapper *ResponseWrapper) canRewrite() bool {
 }
 
 // SetLastModified update the local lastModified variable from non-package-based users.
+//
+// Deprecated: pass lastModified to WrapWriter, which is the only setting this
+// wrapper reads. Nothing in this module calls this, and it has no effect once
+// the header has gone out -- WriteHeader is what acts on the value.
 func (wrapper *ResponseWrapper) SetLastModified(value bool) {
 	wrapper.lastModified = value
 }
