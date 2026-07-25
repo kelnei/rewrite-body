@@ -78,6 +78,14 @@ upstream v1.2.0 (commit a37d560, 24 November 2022):
     the defaults backfilled values identical to the ones written there, which is
     what hid it.
 
+  * README.md: the static configuration example dropped the `pilot` block, which
+    has had no meaning since Traefik Pilot shut down. The description of which
+    responses get processed said the Content-Type had to include "text" and gave
+    text/json as an example; it is matched against the configured monitoring
+    types, which default to text/html alone. What each of the three plugins in
+    this lineage contributes is now stated where the reader starts, rather than
+    the fork's own additions being described as the original's.
+
   * .github/workflows and .golangci.yaml were updated so lint and tests -- both
-    compiled and under Yaegi -- actually run for this fork. Tests were added
-    throughout for the above.
+    compiled and under Yaegi -- actually run for this fork, on every supported Go
+    release. Tests were added throughout for the above.

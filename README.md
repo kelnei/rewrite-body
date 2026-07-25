@@ -1,161 +1,251 @@
 # Rewrite Body
 
-> **Fork notice.** This repository is a fork of
+[![Main](https://github.com/kelnei/rewrite-body/actions/workflows/main.yml/badge.svg)](https://github.com/kelnei/rewrite-body/actions/workflows/main.yml)
+
+A [Traefik](https://traefik.io) middleware plugin that rewrites HTTP response
+bodies with regular expressions — including bodies that arrive `gzip` or
+`deflate` encoded, which it decodes, rewrites and re-encodes on the way through.
+
+> **Fork notice.** This is a maintained fork of
 > [packruler/rewrite-body](https://github.com/packruler/rewrite-body) at v1.2.0,
-> whose upstream has had no commits since November 2022. It is maintained for
-> use as a vendored local plugin in Fullbeaker's shared Traefik dev proxy.
-> Changes relative to upstream are listed in [`NOTICE`](NOTICE); the most
-> significant is a logger fix — every log message, including full response
-> bodies, used to be formatted even when the configured level discarded it.
->
-> The module path is `github.com/kelnei/rewrite-body`. Consumers loading this
-> via Traefik's `experimental.localPlugins` key their middleware labels off the
-> map key (e.g. `rewrite-body`), not the module path, so only `moduleName` in
-> the static config needs to point here.
+> which is itself a fork of Traefik's
+> [plugin-rewritebody](https://github.com/traefik/plugin-rewritebody). Neither
+> has taken a commit since November 2022. This one is kept working against
+> current Traefik: v1.3.0 is verified against Traefik 3.7.9, compiled and under
+> Yaegi. See [`CHANGELOG.md`](CHANGELOG.md) for what changed and
+> [`NOTICE`](NOTICE) for every modification relative to upstream.
 
-This is a fork of [Traefik](https://github.com/traefik)'s [plugin-rewritebody](https://github.com/traefik/plugin-rewritebody)
-that is aimed at extending support to handle `gzip` content. This was initially aimed at extending the support for utilizing
-[theme.park](https://github.com/traefik/plugin-rewritebody)'s themes but can likely be used for a range of other uses.
+## What it is good for
 
-## Changes From Original Traefik Plugin
+* **Repointing absolute URLs baked into content.** A database restored from
+  production is full of production hostnames; rewriting them in the response
+  lets a staging or development environment serve that data as-is, instead of
+  running search-and-replace over the database after every restore.
+* **Injecting markup into pages you do not control.** Adding a stylesheet or a
+  script before `</head>` in an application you cannot patch.
+* **Correcting a string an upstream hard-codes.** A wrong link, a stale brand
+  name, a scheme that should be `https`.
 
-The primary change is to add support for `gzip` content. This brought another potential issue to mind, what about really large
-content? This was handled as well.
+It works on any response body the plugin is allowed to buffer — see
+[How it works](#how-it-works) for exactly which those are, and
+[Operating notes](#operating-notes) for what it costs.
 
-### Process For Handling Body Content
+## Requirements
 
-#### Body Content Requirements
+Traefik v3, verified against 3.7.9. The plugin has no Go dependencies.
 
-* The header must have `Content-Type` that includes `text`. For example:
-  * `text/html`
-  * `text/json`
-* The header must have `Content-Encoding` header that is supported by this plugin
-  * The original plugin supported `Content-Encoding` of `identity` or empty
-  * This plugin adds support for `gzip` and `deflate` encoding
+## Installation
 
-#### Processing Paths
+Plugins are declared in Traefik's **static** configuration. Load a tagged
+release:
 
-* If the either of the previous conditions failes the body is passed on as is and no further processing from this plugin occurs.
+```yaml
+experimental:
+  plugins:
+    rewrite-body:
+      moduleName: "github.com/kelnei/rewrite-body"
+      version: "v1.3.0"
+```
 
-* If the `Content-Encoding` is empty or `identity` it is handled in mostly the same manner as the original plugin.
+Or run it from a working copy — mount the source at
+`/plugins-local/src/github.com/kelnei/rewrite-body` and declare it local.
+Traefik builds a local plugin at startup, so restart Traefik after changing the
+source:
 
-* If the `Content-Encoding` is `gzip` the following process happens:
-  * The body content is decompressed by [Go-lang's gzip library](https://pkg.go.dev/compress/gzip)
-  * The resulting content is run through the `regex` process created by the original plugin
-  * The processed content is then compressed with the same library and returned
+```yaml
+experimental:
+  localPlugins:
+    rewrite-body:
+      moduleName: "github.com/kelnei/rewrite-body"
+```
 
-* If the `Content-Encoding` is `deflate` the same process runs using
-  [Go-lang's zlib library](https://pkg.go.dev/compress/zlib), since HTTP's
-  `deflate` means the zlib format of RFC 1950. A body that arrives as bare
-  RFC 1951 DEFLATE with no zlib wrapper is also decoded, because plenty of
-  servers send it that way.
+Either way, middleware references in the dynamic configuration use the map name
+you chose (`rewrite-body` above), not the module path.
 
 ## Configuration
 
-### Static
-
-```yaml
-pilot:
-  token: "xxxx"
-
-experimental:
-    plugins:
-        rewrite-body:
-            moduleName: "github.com/kelnei/rewrite-body"
-            version: "v1.1.0"
-```
-
-### Dynamic
-
-To configure the `Rewrite Body` plugin you should create a [middleware](https://docs.traefik.io/middlewares/overview/) in 
-your dynamic configuration as explained [here](https://docs.traefik.io/middlewares/overview/). The following example creates
-and uses the `rewritebody` middleware plugin to replace all foo occurences by bar in the HTTP response body.
-
-If you want to apply some limits on the response body, you can chain this middleware plugin with the [Buffering middleware](https://docs.traefik.io/middlewares/buffering/) from Traefik.
+Create a [middleware](https://doc.traefik.io/traefik/middlewares/overview/) in
+the dynamic configuration and attach it to a router. Every option below is
+shown with its default:
 
 ```yaml
 http:
   routers:
     my-router:
       rule: "Host(`localhost`)"
-      middlewares: 
-        - "rewrite-foo"
-      service: "my-service"
+      service: my-service
+      middlewares:
+        - rewrite-foo
 
   middlewares:
     rewrite-foo:
       plugin:
         rewrite-body:
-          # Keep Last-Modified header returned by the HTTP service.
-          # By default, the Last-Modified header is removed -- from the responses
-          # this plugin rewrites. One it forwards untouched keeps the header,
-          # because the content it describes has not changed.
-          lastModified: true
-
-          # Rewrites all "foo" occurences by "bar"
+          # Applied in order: each pattern sees the output of the one before it.
           rewrites:
             - regex: "foo"
               replacement: "bar"
 
-          # logLevel is optional, defaults to Info level.
-          # Available logLevels: (Trace: -2, Debug: -1, Info: 0, Warning: 1, Error: 2)
-          # Debug logs the per-request routing decisions. Trace additionally dumps
-          # every response body before and after rewriting, so it is only usable
-          # for one-off debugging -- not on a busy route.
+          # Keep the upstream Last-Modified on responses this plugin rewrites.
+          # Defaults to false, which removes it, because a rewritten body is no
+          # longer the one that header describes. A response the plugin forwards
+          # untouched always keeps it.
+          lastModified: false
+
+          # Trace: -2, Debug: -1, Info: 0, Warning: 1, Error: 2.
+          # Debug logs the per-request routing decisions. Trace additionally
+          # dumps every response body before and after rewriting, so it is for
+          # one-off debugging, not a busy route.
           logLevel: 0
 
-          # monitoring is optional, defaults to below configuration
-          # monitoring configuration limits the HTTP queries that are checked for regex replacement.
+          # Which responses are considered at all.
           monitoring:
-            # methods is a string list. Options are standard HTTP Methods. Entries MUST be ALL CAPS
-            # For a list of options: https://developer.mozilla.org/en-US/docs/Web/HTTP/Methods
-            methods:
-              - GET
-            # types is a string list. Options are HTTP Content Types. Entries should match standard formatting
-            # For a list of options: https://developer.mozilla.org/en-US/docs/Web/HTTP/Basics_of_HTTP/MIME_types
-            # Wildcards(*) are not supported in these entries!
-            # Entries are matched against the response Content-Type. A request's
-            # Accept header only skips requests that clearly want something else,
-            # so `*/*`, `text/*` and a missing Accept are all still rewritten.
+            # Matched against the response Content-Type as a substring, so
+            # text/html covers "text/html; charset=utf-8". Wildcards are not
+            # supported here -- write the types out.
             types:
               - text/html
-  services:
-    my-service:
-      loadBalancer:
-        servers:
-          - url: "http://127.0.0.1"
+            # Matched exactly, and always ALL CAPS. HEAD is never processed
+            # whatever this says: its response has no body to rewrite.
+            methods:
+              - GET
 ```
 
-## Example theme.park
+| Option | Type | Default | Notes |
+| --- | --- | --- | --- |
+| `rewrites[].regex` | string | — | [RE2](https://github.com/google/re2/wiki/Syntax) syntax, as in Go's `regexp`. Applied to the whole body, so a match may span the writes the backend made. |
+| `rewrites[].replacement` | string | — | `$1` and `${name}` expand to submatches; use `$$` for a literal `$`. |
+| `lastModified` | bool | `false` | `false` removes `Last-Modified` from rewritten responses. |
+| `logLevel` | int8 | `0` (Info) | `-2` Trace, `-1` Debug, `0` Info, `1` Warning, `2` Error. |
+| `monitoring.types` | []string | `["text/html"]` | Substring match on the response `Content-Type`. |
+| `monitoring.methods` | []string | `["GET"]` | Exact match. `HEAD` is always excluded. |
 
-### Dynamic
+### Example: repoint production URLs at a staging host
 
 ```yaml
 http:
-  routers:
-    sonarr-router:
-      rule: "Host(`sonarr.example.com`)"
-      middlewares: 
-        - sonarr-theme
-      service: sonarr-service
-
   middlewares:
-    sonarr-theme:
+    stage-urls:
+      plugin:
+        rewrite-body:
+          monitoring:
+            types:
+              - text/html
+              - application/json
+          rewrites:
+            # Absolute URLs, keeping the path.
+            - regex: "https://www\\.example\\.com"
+              replacement: "https://stage.example.com"
+            # Protocol-relative and escaped forms as they appear in JSON.
+            - regex: "https:\\\\/\\\\/www\\.example\\.com"
+              replacement: "https:\\/\\/stage.example.com"
+```
+
+### Example: inject a stylesheet
+
+```yaml
+http:
+  middlewares:
+    inject-css:
       plugin:
         rewrite-body:
           rewrites:
-            - regex: </head>
-              replacement: <link rel="stylesheet" type="text/css" href="https://theme-park.dev/css/base/sonarr/{{ env "THEME" }}.css"></head>
-
-  services:
-    sonarr-service:
-      servers:
-        - url: http://localhost:8989
+            - regex: "</head>"
+              replacement: '<link rel="stylesheet" href="/custom.css"></head>'
 ```
 
-You can set an environment variable `THEME` to the name of a theme for easier consistency across apps.
+## How it works
+
+### Which responses are processed
+
+A response is rewritten only when all of the following hold. They are checked in
+order of cost, cheapest first:
+
+1. The request method is in `monitoring.methods`, and is not `HEAD`.
+2. The request is not a WebSocket upgrade.
+3. The request's `Accept` header does not rule out every monitored type. `*/*`,
+   a range such as `text/*`, and a missing header are all open-ended and pass
+   this gate — `Accept` states what a client would like, not what the response
+   will be, so it can only be used to skip requests that clearly want something
+   else. This is why `fetch` and `XMLHttpRequest` responses are rewritten.
+4. The response `Content-Type` names one of `monitoring.types`. This is the
+   check that actually decides.
+5. The response `Content-Encoding` is one of `gzip`, `deflate`, `identity`, or
+   absent.
+
+### What happens to everything else
+
+Anything failing 4 or 5 is forwarded to the client as the backend sent it —
+write by write, headers untouched, including the `Content-Length` and
+`Last-Modified` it arrived with. Nothing is buffered, so a download or an
+open-ended stream that happens to reach the plugin costs no memory here and is
+not held back.
+
+Anything failing 1 to 3 never reaches the plugin's writer at all.
+
+### Encodings
+
+| `Content-Encoding` | Handling |
+| --- | --- |
+| absent, `identity` | Rewritten directly. |
+| `gzip` | Decoded with [`compress/gzip`](https://pkg.go.dev/compress/gzip), rewritten, re-encoded. |
+| `deflate` | Decoded and re-encoded with [`compress/zlib`](https://pkg.go.dev/compress/zlib), since HTTP's `deflate` means the zlib format of RFC 1950. A body arriving as bare RFC 1951 DEFLATE without the zlib wrapper is also decoded, because plenty of servers send it that way. |
+| anything else, `br` included | Forwarded untouched. |
+
+If a body cannot be decoded, or cannot be re-encoded after rewriting, the
+original response is sent instead. The rewrite is abandoned rather than the body
+truncated.
+
+### Headers
+
+`Content-Length` is dropped from a rewritten response, because the rewrite
+changes the length; the final write establishes the new one. Forwarded responses
+keep theirs.
+
+## Operating notes
+
+* **A rewritten response is buffered in full.** A regular expression can match
+  across the writes a backend makes, so the whole body has to be present before
+  any pattern runs. Budget one body's worth of memory per in-flight rewritten
+  request. To bound it, chain Traefik's
+  [Buffering middleware](https://doc.traefik.io/traefik/middlewares/http/buffering/),
+  which can cap a response size.
+* **A monitored response that streams is buffered too**, and so arrives at the
+  client when it finishes rather than as it is produced. That is inherent to
+  rewriting. Keep streaming endpoints — Server-Sent Events, long-poll, chunked
+  progress — out of `monitoring.types`, and they pass straight through.
+* **Traefik does not call the plugin's `Flush`.** Yaegi hands compiled code a
+  wrapper satisfying only `http.ResponseWriter`, so Traefik's check for an
+  `http.Flusher` fails and it stops flushing for the route. A forwarded body
+  still leaves as `net/http`'s own response buffer fills, so a long stream keeps
+  moving, but a stream under about 2 kB in total arrives at the end.
+* **Aborted upstream responses log at ERROR.** When a backend abandons a
+  response, this plugin re-panics `http.ErrAbortHandler` so Traefik performs the
+  abort rather than sending a `200` with no body. Yaegi wraps the panic value,
+  which defeats Traefik's identity check on the sentinel, so its recovery
+  middleware logs each abort at ERROR where an unplugged route logs DEBUG. Noise
+  only.
 
 ## Development
+
+```bash
+make          # lint and test
+make test     # go test -v -cover ./...
+make lint     # golangci-lint run
+make yaegi_test
+```
+
+`yaegi test` resolves imports through `GOPATH` rather than the module cache, so
+the checkout has to sit at its own module path for that target to find the
+plugin's own packages:
+
+```bash
+mkdir -p "$GOPATH/src/github.com/kelnei"
+ln -s "$PWD" "$GOPATH/src/github.com/kelnei/rewrite-body"
+```
+
+CI runs the whole set on every Go release upstream still supports, compiled and
+under Yaegi.
 
 ### Traefik interprets this plugin, so its Go is not the Go you build with
 
@@ -177,11 +267,10 @@ package httptest "net/http/httptest" has no symbol NewRequestWithContext
 ```
 
 **Interfaces implemented here can be invisible to Traefik.** Yaegi hands
-compiled code a wrapper satisfying the one interface it was asked for, so a
-type assertion inside Traefik for a second interface fails even though the
-method is right there. `ResponseWrapper.Flush` is the live case: Traefik never
-calls it, which is why a forwarded response reaches the client as `net/http`'s
-own buffer fills rather than per flush. See `httputil/response_writer.go`.
+compiled code a wrapper satisfying the one interface it was asked for, so a type
+assertion inside Traefik for a second interface fails even though the method is
+right there. `ResponseWrapper.Flush` is the live case, described under
+[Operating notes](#operating-notes).
 
 `make yaegi_test` catches the first of these and runs in CI on every push. The
 second shows up only against a running Traefik, so measure on the wire before
@@ -189,6 +278,14 @@ trusting a change to the response path.
 
 None of this is what the `go` directive in `go.mod` controls. That is the
 minimum toolchain, and it constrains the compiler and the linters; Yaegi caps
-what the code may actually use. CI tests the Go releases upstream still
-supports, so the directive has to stay at or below `oldstable`.
+what the code may actually use.
 
+## Licence and credits
+
+Licensed under the Apache License, Version 2.0 — see [`LICENCE`](LICENCE).
+
+This product includes software developed by
+[packruler](https://github.com/packruler/rewrite-body), which is itself a fork
+of Traefik's [plugin-rewritebody](https://github.com/traefik/plugin-rewritebody).
+[`NOTICE`](NOTICE) carries the attribution the licence requires, along with an
+itemised list of every modification made in this fork.
