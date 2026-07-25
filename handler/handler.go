@@ -123,19 +123,27 @@ func (bodyRewrite *rewriteBody) ServeHTTP(response http.ResponseWriter, req *htt
 }
 
 func (bodyRewrite *rewriteBody) handlePanic() {
-	if recovery := recover(); recovery != nil {
-		if err, ok := recovery.(error); ok {
-			bodyRewrite.logError(err)
-		} else {
-			bodyRewrite.logger.LogWarningf("Unhandled error: %v", recovery)
-		}
-	}
-}
-
-func (bodyRewrite *rewriteBody) logError(err error) {
-	// Ignore http.ErrAbortHandler because they are expected errors that do not require handling
-	if errors.Is(err, http.ErrAbortHandler) {
+	recovery := recover()
+	if recovery == nil {
 		return
+	}
+
+	err, isError := recovery.(error)
+	if !isError {
+		bodyRewrite.logger.LogWarningf("Unhandled error: %v", recovery)
+
+		return
+	}
+
+	// http.ErrAbortHandler is a sentinel, not a failure: something downstream
+	// panicked with it to tell net/http to abandon the response and close the
+	// connection without logging a stack trace. Recovering it here and
+	// returning normally would make the server believe the handler finished, so
+	// it would try to complete a response that was deliberately abandoned --
+	// which is what produces "malformed chunked encoding" on the client.
+	// Re-panic and let net/http perform the abort it was asked for.
+	if errors.Is(err, http.ErrAbortHandler) {
+		panic(recovery)
 	}
 
 	bodyRewrite.logger.LogWarningf("Recovered from: %v", err)
