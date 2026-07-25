@@ -8,7 +8,6 @@ import (
 	"fmt"
 	"net"
 	"net/http"
-	"strings"
 
 	"github.com/kelnei/rewrite-body/compressutil"
 	"github.com/kelnei/rewrite-body/logger"
@@ -143,19 +142,9 @@ func (wrapper *ResponseWrapper) getContentType() string {
 
 // SupportsProcessing determine if HttpWrapper is supported by this plugin based on encoding.
 func (wrapper *ResponseWrapper) SupportsProcessing() bool {
-	foundContentType := false
-
-	// If content type does not match return values with false
-	contentType := wrapper.getContentType()
-	for _, monitoredType := range wrapper.monitoring.Types {
-		if strings.Contains(contentType, monitoredType) {
-			foundContentType = true
-
-			break
-		}
-	}
-
-	if !foundContentType {
+	// This is the authoritative type check: the response Content-Type is what
+	// decides whether a body gets rewritten.
+	if !wrapper.monitoring.MatchesType(wrapper.getContentType()) {
 		return false
 	}
 
