@@ -83,6 +83,8 @@ func (bodyRewrite *rewriteBody) ServeHTTP(response http.ResponseWriter, req *htt
 	wrappedWriter.SetLastModified(bodyRewrite.lastModified)
 
 	// look into using https://pkg.go.dev/net/http#RoundTripper
+	//
+	//nolint:contextcheck // the clone carries req's own context; see CloneWithSupportedEncoding
 	bodyRewrite.next.ServeHTTP(wrappedWriter, wrappedRequest.CloneWithSupportedEncoding())
 
 	if !wrappedWriter.SupportsProcessing() {
