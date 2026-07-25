@@ -1,0 +1,25 @@
+rewrite-body
+Copyright 2022 packruler
+Copyright 2026 Matt Linscott
+
+This product includes software developed by packruler
+(https://github.com/packruler/rewrite-body), which is itself a fork of
+Traefik's plugin-rewritebody (https://github.com/traefik/plugin-rewritebody).
+
+Licensed under the Apache License, Version 2.0. See the LICENCE file.
+
+Modifications made in this fork (github.com/kelnei/rewrite-body), relative to
+upstream v1.2.0 (commit a37d560, 24 November 2022):
+
+  * go.mod, all Go import paths, and .traefik.yml were updated from
+    github.com/packruler/rewrite-body to github.com/kelnei/rewrite-body so the
+    module path matches this repository.
+
+  * logger/logger.go: the Log*f methods now check the configured log level
+    before formatting the message. Previously fmt.Sprintf was passed as an
+    argument to writeLog and therefore evaluated unconditionally, so discarded
+    log lines still built their message in full. Because the handler logs the
+    whole response body twice per request, this allocated roughly twice the
+    page size on every request even with logging disabled.
+
+  * logger/logger_format_test.go was added to cover the above.

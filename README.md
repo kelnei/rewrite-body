@@ -1,5 +1,18 @@
 # Rewrite Body
 
+> **Fork notice.** This repository is a fork of
+> [packruler/rewrite-body](https://github.com/packruler/rewrite-body) at v1.2.0,
+> whose upstream has had no commits since November 2022. It is maintained for
+> use as a vendored local plugin in Fullbeaker's shared Traefik dev proxy.
+> Changes relative to upstream are listed in [`NOTICE`](NOTICE); the most
+> significant is a logger fix — every log message, including full response
+> bodies, used to be formatted even when the configured level discarded it.
+>
+> The module path is `github.com/kelnei/rewrite-body`. Consumers loading this
+> via Traefik's `experimental.localPlugins` key their middleware labels off the
+> map key (e.g. `rewrite-body`), not the module path, so only `moduleName` in
+> the static config needs to point here.
+
 This is a fork of [Traefik](https://github.com/traefik)'s [plugin-rewritebody](https://github.com/traefik/plugin-rewritebody)
 that is aimed at extending support to handle `gzip` content. This was initially aimed at extending the support for utilizing
 [theme.park](https://github.com/traefik/plugin-rewritebody)'s themes but can likely be used for a range of other uses.
