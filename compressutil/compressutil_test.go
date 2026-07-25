@@ -4,7 +4,7 @@ import (
 	"bytes"
 	"testing"
 
-	"github.com/packruler/rewrite-body/compressutil"
+	"github.com/kelnei/rewrite-body/compressutil"
 )
 
 type TestStruct struct {

@@ -9,9 +9,9 @@ import (
 	"strconv"
 	"testing"
 
-	"github.com/packruler/rewrite-body/compressutil"
-	"github.com/packruler/rewrite-body/handler"
-	"github.com/packruler/rewrite-body/httputil"
+	"github.com/kelnei/rewrite-body/compressutil"
+	"github.com/kelnei/rewrite-body/handler"
+	"github.com/kelnei/rewrite-body/httputil"
 )
 
 func TestServeHTTP(t *testing.T) {

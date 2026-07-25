@@ -3,7 +3,7 @@ package handler
 import (
 	"regexp"
 
-	"github.com/packruler/rewrite-body/httputil"
+	"github.com/kelnei/rewrite-body/httputil"
 )
 
 // Rewrite holds one rewrite body configuration.

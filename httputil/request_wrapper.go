@@ -6,8 +6,8 @@ import (
 	"strconv"
 	"strings"
 
-	"github.com/packruler/rewrite-body/compressutil"
-	"github.com/packruler/rewrite-body/logger"
+	"github.com/kelnei/rewrite-body/compressutil"
+	"github.com/kelnei/rewrite-body/logger"
 )
 
 // RequestWrapper a struct that centralizes request modifications.

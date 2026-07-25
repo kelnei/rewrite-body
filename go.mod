@@ -1,3 +1,3 @@
-module github.com/packruler/rewrite-body
+module github.com/kelnei/rewrite-body
 
 go 1.16

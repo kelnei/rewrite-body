@@ -5,7 +5,7 @@ import (
 	"context"
 	"net/http"
 
-	"github.com/packruler/rewrite-body/handler"
+	"github.com/kelnei/rewrite-body/handler"
 )
 
 // CreateConfig creates and initializes the plugin configuration.
