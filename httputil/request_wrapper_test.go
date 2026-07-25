@@ -215,6 +215,26 @@ func TestSupportsProcessing(t *testing.T) {
 				Methods: []string{"GET"},
 			},
 		},
+		{
+			desc:            "Does not support a method that merely contains a monitored method",
+			inputType:       "text/html",
+			inputMethod:     "GETX",
+			expectedSupport: false,
+			monitoringConfig: MonitoringConfig{
+				Types:   []string{"text/html"},
+				Methods: []string{"GET"},
+			},
+		},
+		{
+			desc:            "Does not treat an empty configured method as a wildcard",
+			inputType:       "text/html",
+			inputMethod:     http.MethodGet,
+			expectedSupport: false,
+			monitoringConfig: MonitoringConfig{
+				Types:   []string{"text/html"},
+				Methods: []string{""},
+			},
+		},
 	}
 
 	defaultLogWriter := logger.CreateLogger(logger.Error)

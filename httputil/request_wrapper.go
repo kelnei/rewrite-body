@@ -144,10 +144,14 @@ func (req *RequestWrapper) SupportsProcessing() bool {
 
 	isSupported = false
 
-	// Ignore non GET requests
+	// Ignore non GET requests. Methods are exact tokens, so this compares whole
+	// values: a substring match would let a monitored GET pick up any method
+	// containing it, and would make an empty configured method match everything.
 	for _, monitoredMethod := range req.monitoring.Methods {
-		if strings.Contains(req.Method, monitoredMethod) {
+		if req.Method == monitoredMethod {
 			isSupported = true
+
+			break
 		}
 	}
 
