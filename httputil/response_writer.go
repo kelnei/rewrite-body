@@ -94,7 +94,17 @@ func (wrapper *ResponseWrapper) GetContent() ([]byte, error) {
 // SetContent write data to the internal ResponseWriter buffer
 // and match initial encoding.
 func (wrapper *ResponseWrapper) SetContent(data []byte, encoding string) {
-	bodyBytes, _ := compressutil.Encode(data, encoding)
+	bodyBytes, err := compressutil.Encode(data, encoding)
+	if err != nil {
+		// bodyBytes is nil here, so writing it would send an empty body under a
+		// success status -- a silent truncation. The response headers, including
+		// Content-Encoding, went out with WriteHeader and cannot be taken back,
+		// so the body still has to match the encoding the client was promised:
+		// give up on the rewrite and send the original response instead.
+		wrapper.logWriter.LogErrorf("unable to encode rewritten body as %q, sending the original response: %v", encoding, err)
+
+		bodyBytes = wrapper.buffer.Bytes()
+	}
 
 	if !wrapper.wroteHeader {
 		wrapper.WriteHeader(http.StatusOK)
