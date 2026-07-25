@@ -29,25 +29,20 @@ func (readerError *ReaderError) Unwrap() error {
 
 // Decode data in a bytes.Reader based on supplied encoding.
 func Decode(byteReader *bytes.Buffer, encoding string) ([]byte, error) {
-	if encoding == Deflate {
-		return decodeDeflate(byteReader.Bytes())
-	}
-
-	reader, err := getRawReader(byteReader, encoding)
-	if err != nil {
-		return nil, &ReaderError{cause: err}
-	}
-
-	return io.ReadAll(reader)
-}
-
-func getRawReader(byteReader *bytes.Buffer, encoding string) (io.Reader, error) {
 	switch encoding {
+	case Deflate:
+		return decodeDeflate(byteReader.Bytes())
+
 	case Gzip:
-		return gzip.NewReader(byteReader)
+		gzipReader, err := gzip.NewReader(byteReader)
+		if err != nil {
+			return nil, &ReaderError{cause: err}
+		}
+
+		return io.ReadAll(gzipReader)
 
 	default:
-		return byteReader, nil
+		return io.ReadAll(byteReader)
 	}
 }
 
@@ -55,11 +50,9 @@ func getRawReader(byteReader *bytes.Buffer, encoding string) (io.Reader, error) 
 //
 // HTTP defines deflate as the zlib format of RFC 1950, but raw DEFLATE
 // (RFC 1951) with no zlib wrapper is common in the wild -- this plugin itself
-// emitted it before the matching encode fix. Read the spec-conformant form
-// first and fall back to raw, so a body in either format decodes.
-//
-// The fallback covers the whole read rather than only the header check, because
-// a raw stream can begin with two bytes that happen to pass as a zlib header.
+// emitted it before the matching encode fix -- so either has to decode. The
+// fallback covers the whole read rather than only the header check, because a
+// raw stream can begin with two bytes that happen to pass as a zlib header.
 func decodeDeflate(data []byte) ([]byte, error) {
 	if zlibReader, err := zlib.NewReader(bytes.NewReader(data)); err == nil {
 		if decoded, err := io.ReadAll(zlibReader); err == nil {
