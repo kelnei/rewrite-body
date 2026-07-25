@@ -23,3 +23,44 @@ upstream v1.2.0 (commit a37d560, 24 November 2022):
     page size on every request even with logging disabled.
 
   * logger/logger_format_test.go was added to cover the above.
+
+  * handler/handler.go: http.ErrAbortHandler is re-panicked instead of being
+    recovered. Recovering it made ServeHTTP return normally, so the server
+    completed a response that had deliberately been abandoned -- verified
+    against Traefik 3.7.9, where an upstream that aborted mid-body reached the
+    client as a 200 with Content-Length: 0 instead of a closed connection.
+
+  * handler/handler.go: full response bodies are logged at Trace rather than
+    Debug, leaving Debug usable as an operator log level.
+
+  * httputil/request_wrapper.go: the request Accept header no longer has to name
+    a monitored content type. */*, a range wildcard and a missing header are all
+    treated as open-ended and fall through to the response Content-Type check,
+    so fetch and XMLHttpRequest responses are rewritten. This is a behaviour
+    change: requests that previously went unprocessed now get buffered unless
+    they ask only for an unmonitored type.
+
+  * httputil/request_wrapper.go: monitored methods are compared exactly rather
+    than by substring, and HEAD is never processed -- a HEAD response has no
+    body to rewrite, and buffering one cost the response its Content-Length.
+
+  * httputil/response_writer.go: GetContent decodes from a copy of the buffered
+    response, so a failed decode no longer consumes part of the body that the
+    error path then writes to the client. SetContent no longer discards the
+    re-encode error, which used to leave an empty body under a success status.
+    Unwrap was added for http.ResponseController, and CloseNotify falls back to
+    the request context instead of a channel nothing can ever send on.
+
+  * compressutil/compressutil.go: Content-Encoding: deflate is encoded as zlib
+    (RFC 1950) as HTTP specifies, having previously been raw DEFLATE that only
+    this plugin could read back. Decoding accepts either form. ReaderError is
+    now unwrappable.
+
+  * httputil/monitoring_config.go: EnsureProperFormat, which undid a 2022 config
+    parser quirk that mangled string lists, was removed after confirming
+    Traefik 3.7.9 delivers proper slices through both the file provider and
+    docker labels.
+
+  * .github/workflows and .golangci.yaml were updated so lint and tests -- both
+    compiled and under Yaegi -- actually run for this fork. Tests were added
+    throughout for the above.
