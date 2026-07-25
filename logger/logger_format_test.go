@@ -106,6 +106,26 @@ func TestFormattingRunsWhenEnabled(t *testing.T) {
 	}
 }
 
+// TestLogLinePrefix guards the separator that ends the prefix. log.Ldate writes
+// the date immediately after it, so a prefix ending in the level name ran the
+// two together and every line read "Rewrite-Body | DEBUG2026/07/24 20:31:41".
+func TestLogLinePrefix(t *testing.T) {
+	for level, name := range levelNames {
+		t.Run(name, func(t *testing.T) {
+			var buffer bytes.Buffer
+
+			logger := createLoggerWithBuffer(Trace, &buffer)
+
+			logf(logger, level, "a message")
+
+			prefix := "Rewrite-Body | " + name + " | "
+			if !strings.HasPrefix(buffer.String(), prefix) {
+				t.Errorf("got %q, want it to start with %q", buffer.String(), prefix)
+			}
+		})
+	}
+}
+
 // BenchmarkSuppressedLogDebugf documents the cost this fix removes. The handler
 // logs the full response body twice per request, so this runs on every request
 // through the middleware regardless of the configured level.
