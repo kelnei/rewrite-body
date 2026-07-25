@@ -1,39 +1,7 @@
+version: "2"
+
 run:
   timeout: 3m
-
-linters-settings:
-  govet:
-    enable:
-      - shadow
-  gocyclo:
-    min-complexity: 12
-  goconst:
-    min-len: 3
-    min-occurrences: 4
-  misspell:
-    locale: US
-  funlen:
-    lines: 60
-    statements: 40
-  ireturn:
-    # ireturn allows using `allow` and `reject` settings at the same time.
-    # Both settings are lists of the keywords and regular expressions matched to interface or package names.
-    # keywords:
-    # - `empty` for `interface{}`
-    # - `error` for errors
-    # - `stdlib` for standard library
-    # - `anon` for anonymous interfaces
-
-    # By default, it allows using errors, empty interfaces, anonymous interfaces,
-    # and interfaces provided by the standard library.
-    allow:
-      - anon
-      - error
-      - empty
-      - stdlib
-      # You can specify idiomatic endings for interface
-      - (or|er)$
-      - github.com/kelnei/rewrite-body/logger.LogWriter
 
 # Upstream used `enable-all: true`, which silently takes on every linter each
 # new golangci-lint release adds. By 2026 that meant ~54 findings, nearly all
@@ -84,26 +52,87 @@ linters:
     - usestdlibvars
     - wastedassign
     - whitespace
-    - wsl
+    - wsl_v5
+
+  settings:
+    govet:
+      enable:
+        - shadow
+    gocyclo:
+      min-complexity: 12
+    goconst:
+      min-len: 3
+      min-occurrences: 4
+      # Test fixtures repeat the media types and bodies they exercise, which is
+      # the clearest way to write them. Counting those occurrences only ever
+      # reports a constant the production code uses once.
+      ignore-tests: true
+    staticcheck:
+      # QF1008 wants the embedded field dropped from wrapper.ResponseWriter.x.
+      # ResponseWrapper is built to mediate between itself and the writer it
+      # wraps -- SetContent calls ResponseWriter.Write precisely to bypass the
+      # wrapper's own buffering -- so naming the writer is the point.
+      checks:
+        - all
+        - -QF1008
+    wsl_v5:
+      allow-first-in-block: true
+      allow-whole-block: false
+      branch-max-lines: 2
+    misspell:
+      locale: US
+    funlen:
+      lines: 60
+      statements: 40
+    ireturn:
+      # ireturn allows using `allow` and `reject` settings at the same time.
+      # Both settings are lists of the keywords and regular expressions matched to interface or package names.
+      # keywords:
+      # - `empty` for `interface{}`
+      # - `error` for errors
+      # - `stdlib` for standard library
+      # - `anon` for anonymous interfaces
+
+      # By default, it allows using errors, empty interfaces, anonymous interfaces,
+      # and interfaces provided by the standard library.
+      allow:
+        - anon
+        - error
+        - empty
+        - stdlib
+        # You can specify idiomatic endings for interface
+        - (or|er)$
+        - github.com/kelnei/rewrite-body/logger.LogWriter
+
+  exclusions:
+    rules:
+      - path: (.+)_test.go
+        linters:
+          - dupl
+          - goconst
+          - funlen
+          - godot
+          - lll
+          # noctx wants httptest.NewRequestWithContext. A fixture handed straight
+          # to ServeHTTP has no context to carry, and the call is unavailable
+          # anyway: Yaegi's stdlib is frozen at its 2024 release, which predates
+          # the Go 1.23 addition, so the root package's tests cannot name it and
+          # still run under `make yaegi_test`.
+          - noctx
+      - path: config.go
+        linters:
+          - lll
+      # A v2 exclusion needs two matchers, so these carry a path that matches
+      # every Go file rather than narrowing anything.
+      - path: (.+)\.go$
+        text: don't use an underscore in package name
+      - path: (.+)\.go$
+        text: "ST1003: should not use underscores in package names"
+      # CloseNotify is a deprecated interface kept deliberately, for callers that
+      # still type-assert for it. See httputil/response_writer.go.
+      - path: (.+)\.go$
+        text: "SA1019: http.CloseNotifier has been deprecated"
 
 issues:
-  exclude-use-default: false
-  max-per-linter: 0
+  max-issues-per-linter: 0
   max-same-issues: 0
-  exclude:
-    - don't use an underscore in package name
-    - "ST1003: should not use underscores in package names"
-    # CloseNotify is a deprecated interface kept deliberately, for callers that
-    # still type-assert for it. See httputil/response_writer.go.
-    - "SA1019: http.CloseNotifier has been deprecated"
-  exclude-rules:
-    - path: (.+)_test.go
-      linters:
-        - dupl
-        - goconst
-        - funlen
-        - godot
-        - lll
-    - path: config.go
-      linters:
-        - lll

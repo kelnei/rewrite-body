@@ -179,7 +179,7 @@ func TestServeHTTP(t *testing.T) {
 				responseWriter.Header().Set("Content-Length", strconv.Itoa(len(test.resBody)))
 				responseWriter.WriteHeader(http.StatusOK)
 
-				_, _ = fmt.Fprintf(responseWriter, test.resBody)
+				_, _ = responseWriter.Write([]byte(test.resBody))
 			}
 
 			rewriteBody, err := New(context.Background(), http.HandlerFunc(next), config, "rewriteBody")
@@ -413,7 +413,9 @@ func TestForwardedResponseStreamsWhileTheBackendWrites(t *testing.T) {
 		}
 	}
 
-	newTestHandler(t, fooToBar, next).ServeHTTP(recorder, httptest.NewRequest(http.MethodGet, "/", nil))
+	request := httptest.NewRequest(http.MethodGet, "/", nil)
+
+	newTestHandler(t, fooToBar, next).ServeHTTP(recorder, request)
 
 	want := chunks[0] + chunks[1]
 	if got := recorder.Body.String(); got != want {

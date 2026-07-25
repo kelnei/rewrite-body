@@ -3,7 +3,6 @@ package rewrite_body
 import (
 	"bytes"
 	"context"
-	"fmt"
 	"net/http"
 	"net/http/httptest"
 	"strconv"
@@ -179,7 +178,7 @@ func TestServeHTTP(t *testing.T) {
 				responseWriter.Header().Set("Content-Length", strconv.Itoa(len(test.resBody)))
 				responseWriter.WriteHeader(http.StatusOK)
 
-				_, _ = fmt.Fprintf(responseWriter, test.resBody)
+				_, _ = responseWriter.Write([]byte(test.resBody))
 			}
 
 			rewriteBody, err := New(context.Background(), http.HandlerFunc(next), config, "rewriteBody")
