@@ -30,6 +30,13 @@ func (config *MonitoringConfig) EnsureDefaults() {
 // leaves room for text/html.
 func (config *MonitoringConfig) MatchesType(header string) bool {
 	for _, monitoredType := range config.Types {
+		// strings.Contains is true for an empty needle, so an empty entry would
+		// otherwise match every header and put binary responses through the
+		// rewrite. An entry that names nothing monitors nothing.
+		if monitoredType == "" {
+			continue
+		}
+
 		if strings.Contains(header, monitoredType) {
 			return true
 		}

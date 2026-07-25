@@ -7,6 +7,58 @@ import (
 	"github.com/kelnei/rewrite-body/httputil"
 )
 
+func TestMatchesType(t *testing.T) {
+	tests := []struct {
+		desc     string
+		types    []string
+		header   string
+		expected bool
+	}{
+		{
+			desc:     "matches the type inside a full Content-Type",
+			types:    []string{"text/html"},
+			header:   "text/html; charset=utf-8",
+			expected: true,
+		},
+		{
+			desc:     "matches through the range that covers the type",
+			types:    []string{"text/html"},
+			header:   "text/*",
+			expected: true,
+		},
+		{
+			desc:     "does not match another type",
+			types:    []string{"text/html"},
+			header:   "application/json",
+			expected: false,
+		},
+		{
+			desc:     "does not match another range",
+			types:    []string{"text/html"},
+			header:   "image/*",
+			expected: false,
+		},
+		{
+			// An empty needle is a substring of everything, so this used to monitor
+			// every response -- images and downloads included.
+			desc:     "does not treat an empty configured type as a wildcard",
+			types:    []string{""},
+			header:   "image/png",
+			expected: false,
+		},
+	}
+
+	for _, test := range tests {
+		t.Run(test.desc, func(t *testing.T) {
+			config := httputil.MonitoringConfig{Types: test.types}
+
+			if got := config.MatchesType(test.header); got != test.expected {
+				t.Errorf("got %v, want %v", got, test.expected)
+			}
+		})
+	}
+}
+
 func TestMonitoringConfigParsing(t *testing.T) {
 	tests := []struct {
 		desc           string
