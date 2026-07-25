@@ -203,6 +203,81 @@ func compressString(value string, encoding string) string {
 	return string(compressed)
 }
 
+func TestAcceptHeaderGating(t *testing.T) {
+	const resBody = "foo is the new bar"
+
+	tests := []struct {
+		desc        string
+		accept      string
+		contentType string
+		expResBody  string
+	}{
+		{
+			desc:        "should rewrite a fetch or XHR response",
+			accept:      "*/*",
+			contentType: "text/html; charset=utf-8",
+			expResBody:  "bar is the new bar",
+		},
+		{
+			desc:        "should rewrite when the request sends no Accept header",
+			accept:      "",
+			contentType: "text/html; charset=utf-8",
+			expResBody:  "bar is the new bar",
+		},
+		{
+			desc:        "should leave an unmonitored response type alone even when anything is accepted",
+			accept:      "*/*",
+			contentType: "application/json",
+			expResBody:  resBody,
+		},
+		{
+			desc:        "should skip a request that only wants an unmonitored type",
+			accept:      "image/png",
+			contentType: "text/html; charset=utf-8",
+			expResBody:  resBody,
+		},
+	}
+
+	for _, test := range tests {
+		t.Run(test.desc, func(t *testing.T) {
+			config := &Config{
+				Rewrites: []Rewrite{
+					{
+						Regex:       "foo",
+						Replacement: "bar",
+					},
+				},
+				LogLevel: 2,
+			}
+
+			next := func(responseWriter http.ResponseWriter, _ *http.Request) {
+				responseWriter.Header().Set("Content-Type", test.contentType)
+				responseWriter.WriteHeader(http.StatusOK)
+
+				_, _ = responseWriter.Write([]byte(resBody))
+			}
+
+			rewriteBody, err := New(context.Background(), http.HandlerFunc(next), config, "rewriteBody")
+			if err != nil {
+				t.Fatal(err)
+			}
+
+			recorder := httptest.NewRecorder()
+			req := httptest.NewRequest(http.MethodGet, "/", nil)
+
+			if test.accept != "" {
+				req.Header.Set("Accept", test.accept)
+			}
+
+			rewriteBody.ServeHTTP(recorder, req)
+
+			if recorder.Body.String() != test.expResBody {
+				t.Errorf("got body %q, want %q", recorder.Body.String(), test.expResBody)
+			}
+		})
+	}
+}
+
 func TestUndecodableBodyIsPassedThroughIntact(t *testing.T) {
 	// A body that claims an encoding it does not actually use. The rewrite has to
 	// be abandoned, but the client must still receive every byte the backend

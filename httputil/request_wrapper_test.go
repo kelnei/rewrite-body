@@ -196,8 +196,48 @@ func TestSupportsProcessing(t *testing.T) {
 			},
 		},
 		{
+			desc:            "Supports a fetch or XHR request that accepts anything",
+			inputType:       "*/*",
+			inputMethod:     http.MethodGet,
+			expectedSupport: true,
+			monitoringConfig: MonitoringConfig{
+				Types:   []string{"text/html"},
+				Methods: []string{"GET"},
+			},
+		},
+		{
+			desc:            "Supports a request that sends no Accept header",
+			inputType:       "",
+			inputMethod:     http.MethodGet,
+			expectedSupport: true,
+			monitoringConfig: MonitoringConfig{
+				Types:   []string{"text/html"},
+				Methods: []string{"GET"},
+			},
+		},
+		{
+			desc:            "Supports a wildcard over a monitored range",
+			inputType:       "text/*",
+			inputMethod:     http.MethodGet,
+			expectedSupport: true,
+			monitoringConfig: MonitoringConfig{
+				Types:   []string{"text/html"},
+				Methods: []string{"GET"},
+			},
+		},
+		{
 			desc:            "Does not support type not included",
 			inputType:       "application/javascript",
+			inputMethod:     http.MethodGet,
+			expectedSupport: false,
+			monitoringConfig: MonitoringConfig{
+				Types:   []string{"text/html"},
+				Methods: []string{"GET"},
+			},
+		},
+		{
+			desc:            "Does not support a request that only wants another range",
+			inputType:       "image/*",
 			inputMethod:     http.MethodGet,
 			expectedSupport: false,
 			monitoringConfig: MonitoringConfig{

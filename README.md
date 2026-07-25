@@ -106,6 +106,12 @@ http:
             # types is a string list. Options are HTTP Content Types. Entries should match standard formatting
             # For a list of options: https://developer.mozilla.org/en-US/docs/Web/HTTP/Basics_of_HTTP/MIME_types
             # Wildcards(*) are not supported!
+            #
+            # types is matched against the response Content-Type, which is what
+            # decides whether a body gets rewritten. The request's Accept header
+            # is only used to skip requests that clearly want something else, so
+            # `*/*`, `text/*` and a missing Accept all carry on to that check --
+            # which means fetch and XMLHttpRequest responses are rewritten too.
             types:
               - text/html
   services:
