@@ -64,13 +64,13 @@ func (bodyRewrite *rewriteBody) ServeHTTP(response http.ResponseWriter, req *htt
 	wrappedRequest := httputil.WrapRequest(req, bodyRewrite.monitoringConfig, bodyRewrite.logger)
 	// allow default http.ResponseWriter to handle calls targeting WebSocket upgrades and non GET methods
 	if !wrappedRequest.SupportsProcessing() {
-		bodyRewrite.logger.LogDebugf("Ignoring unsupported request: %v", req)
+		bodyRewrite.logRequest("Ignoring unsupported request", req)
 		bodyRewrite.next.ServeHTTP(response, req)
 
 		return
 	}
 
-	bodyRewrite.logger.LogDebugf("Starting supported request: %v", req)
+	bodyRewrite.logRequest("Starting supported request", req)
 
 	wrappedWriter := httputil.WrapWriter(
 		req.Context(),
@@ -123,6 +123,27 @@ func (bodyRewrite *rewriteBody) ServeHTTP(response http.ResponseWriter, req *htt
 
 	encoding := wrappedWriter.Header().Get("Content-Encoding")
 	wrappedWriter.SetContent(bodyBytes, encoding)
+}
+
+// logRequest writes the routing decision for a request at Debug level.
+//
+// It names the request by the fields that decide the routing rather than
+// printing the request. Formatting a *http.Request with %v dumps its whole
+// header map -- Authorization and Cookie included -- along with the query
+// string and the client address, and Debug is the level operators are told to
+// run in production. The arguments are passed through rather than formatted
+// here so that the level check still comes before any formatting.
+func (bodyRewrite *rewriteBody) logRequest(message string, req *http.Request) {
+	bodyRewrite.logger.LogDebugf(
+		"%s: method=%q host=%q path=%q accept=%q accept-encoding=%q upgrade=%q",
+		message,
+		req.Method,
+		req.Host,
+		req.URL.Path,
+		req.Header.Get("Accept"),
+		req.Header.Get("Accept-Encoding"),
+		req.Header.Get("Upgrade"),
+	)
 }
 
 func (bodyRewrite *rewriteBody) handlePanic() {

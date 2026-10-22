@@ -93,9 +93,12 @@ http:
           lastModified: false
 
           # Trace: -2, Debug: -1, Info: 0, Warning: 1, Error: 2.
-          # Debug logs the per-request routing decisions. Trace additionally
-          # dumps every response body before and after rewriting, so it is for
-          # one-off debugging, not a busy route.
+          # Debug logs the per-request routing decisions: method, host, path and
+          # the Accept, Accept-Encoding and Upgrade headers, but not the other
+          # headers or the query string. Trace additionally dumps every response
+          # body before and after rewriting, so it is for one-off debugging, not
+          # a busy route, and its output holds whatever the pages hold, personal
+          # data and tokens included.
           logLevel: 0
 
           # Which responses are considered at all.

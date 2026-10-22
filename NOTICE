@@ -37,6 +37,13 @@ upstream v1.2.0 (commit a37d560, 24 November 2022):
   * handler/handler.go: full response bodies are logged at Trace rather than
     Debug, leaving Debug usable as an operator log level.
 
+  * handler/handler.go and httputil/response_writer.go: the Debug lines that
+    described a request or a failed response no longer print the whole
+    *http.Request or http.Header. Those carry Authorization, Cookie, Set-Cookie,
+    the query string and the client address, so running at Debug wrote
+    credentials to the log. The lines now name the method, host, path and the
+    few headers that decide how the plugin treats the exchange.
+
   * httputil/request_wrapper.go: the request Accept header no longer has to name
     a monitored content type. */*, a range wildcard and a missing header are all
     treated as open-ended and fall through to the response Content-Type check,

@@ -2,6 +2,23 @@
 
 This project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## Unreleased
+
+### Fixed
+
+- **Debug logging no longer writes request credentials.** The two per-request
+  Debug lines printed the whole `*http.Request`, which includes every header
+  (`Authorization` and `Cookie` among them), the query string and the client
+  address, and Debug is meant to be usable as an operator log level. They now
+  log the method, host, path and the `Accept`, `Accept-Encoding` and `Upgrade`
+  headers. `ResponseWrapper.LogHeaders`, which runs when a rewritten body cannot
+  be written to the client, printed the response headers and with them any
+  `Set-Cookie`; it now logs the status, `Content-Type` and `Content-Encoding`.
+  Only routes configured with `logLevel` `-1` or lower were affected, since the
+  default of `0` never wrote these lines. Where a route ran at Debug on v1.3.0
+  or earlier, treat the logs it wrote as holding credentials. Trace still logs
+  response bodies in full, and the README now says what that can contain.
+
 ## v1.3.0 — 2026-07-25
 
 First release of the [kelnei/rewrite-body](https://github.com/kelnei/rewrite-body)
