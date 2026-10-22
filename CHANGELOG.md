@@ -6,6 +6,17 @@ This project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Fixed
 
+- **A panic in the handler behind the plugin is no longer swallowed.**
+  `ServeHTTP` recovered every panic below it, logged a warning and returned, so
+  Traefik completed the response with whatever had been written: a `200` with
+  `Content-Length: 0`, carrying any cache headers the handler had set, where the
+  same route without this plugin answers `500`, or closes the connection once
+  the headers are out. v1.3.0 re-panicked `http.ErrAbortHandler` only; every
+  other panic was still swallowed. The plugin now leaves panics to Traefik's
+  recovery middleware, so a route behaves the same with it as without. The
+  README's note that aborted responses log at ERROR is gone with the re-panic
+  it described: a backend that drops the connection mid-body logs at DEBUG,
+  as it does on a route without the plugin.
 - **Debug logging no longer writes request credentials.** The two per-request
   Debug lines printed the whole `*http.Request`, which includes every header
   (`Authorization` and `Cookie` among them), the query string and the client
