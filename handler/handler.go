@@ -4,7 +4,6 @@ package handler
 import (
 	"context"
 	"encoding/json"
-	"errors"
 	"fmt"
 	"net/http"
 	"regexp"
@@ -58,9 +57,12 @@ func New(_ context.Context, next http.Handler, config *Config, name string) (htt
 	return result, nil
 }
 
+// ServeHTTP does not recover from a panic in the handler it wraps. Traefik's
+// recovery middleware answers 500 while nothing has been written and aborts the
+// response after, and a route behaves the same with this plugin on it as
+// without. A panic that passes through here untouched also keeps its identity,
+// so http.ErrAbortHandler is still recognized as the abort it is.
 func (bodyRewrite *rewriteBody) ServeHTTP(response http.ResponseWriter, req *http.Request) {
-	defer bodyRewrite.handlePanic()
-
 	wrappedRequest := httputil.WrapRequest(req, bodyRewrite.monitoringConfig, bodyRewrite.logger)
 	// allow default http.ResponseWriter to handle calls targeting WebSocket upgrades and non GET methods
 	if !wrappedRequest.SupportsProcessing() {
@@ -144,38 +146,4 @@ func (bodyRewrite *rewriteBody) logRequest(message string, req *http.Request) {
 		req.Header.Get("Accept-Encoding"),
 		req.Header.Get("Upgrade"),
 	)
-}
-
-func (bodyRewrite *rewriteBody) handlePanic() {
-	recovery := recover()
-	if recovery == nil {
-		return
-	}
-
-	err, isError := recovery.(error)
-	if !isError {
-		bodyRewrite.logger.LogWarningf("Unhandled error: %v", recovery)
-
-		return
-	}
-
-	// http.ErrAbortHandler is a sentinel, not a failure: something downstream
-	// panicked with it to tell net/http to abandon the response and close the
-	// connection without logging a stack trace. Recovering it here and returning
-	// normally would make the server believe the handler finished, so it would
-	// try to complete a response that was deliberately abandoned. Measured
-	// against Traefik 3.7.9, that reached the client as a 200 with
-	// Content-Length: 0 -- an abandoned response delivered as a success.
-	// Re-panic and let net/http perform the abort it was asked for.
-	//
-	// Expect one ERROR line per aborted request from Traefik's recovery
-	// middleware, where a route without this plugin logs the same abort at
-	// DEBUG. Yaegi wraps the value we re-panic with, which defeats Traefik's
-	// errors.Is(err, http.ErrAbortHandler) check. Log noise only, and not
-	// something a plugin can fix from in here.
-	if errors.Is(err, http.ErrAbortHandler) {
-		panic(recovery)
-	}
-
-	bodyRewrite.logger.LogWarningf("Recovered from: %v", err)
 }

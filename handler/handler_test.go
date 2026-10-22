@@ -423,31 +423,32 @@ func TestForwardedResponseStreamsWhileTheBackendWrites(t *testing.T) {
 	}
 }
 
-func TestPanicHandling(t *testing.T) {
+// TestDownstreamPanicPropagates pins that the plugin does not recover from a
+// panic in the handler it wraps. Traefik's recovery middleware owns that:
+// it answers 500 while nothing has been written, and aborts the response
+// after, which is what the same request gets on a route without this plugin.
+// Recovering here instead delivered a 200 with an empty body, and an
+// abandoned response looked like a success.
+func TestDownstreamPanicPropagates(t *testing.T) {
 	tests := []struct {
 		desc       string
 		panicValue interface{}
-		expPanic   bool
 	}{
 		{
-			desc:       "should re-panic http.ErrAbortHandler so net/http can abort the response",
+			desc:       "http.ErrAbortHandler",
 			panicValue: http.ErrAbortHandler,
-			expPanic:   true,
 		},
 		{
-			desc:       "should re-panic an error wrapping http.ErrAbortHandler",
+			desc:       "an error wrapping http.ErrAbortHandler",
 			panicValue: fmt.Errorf("upstream gave up: %w", http.ErrAbortHandler),
-			expPanic:   true,
 		},
 		{
-			desc:       "should recover an unrelated error",
+			desc:       "an unrelated error",
 			panicValue: errors.New("something unexpected"),
-			expPanic:   false,
 		},
 		{
-			desc:       "should recover a panic value that is not an error",
+			desc:       "a value that is not an error",
 			panicValue: "something unexpected",
-			expPanic:   false,
 		},
 	}
 
@@ -463,17 +464,10 @@ func TestPanicHandling(t *testing.T) {
 				serveGet(rewriteBody, "text/html")
 			})
 
-			if !test.expPanic {
-				if recovery != nil {
-					t.Errorf("got propagated panic %v, want it recovered", recovery)
-				}
-
-				return
-			}
-
-			recoveredError, isError := recovery.(error)
-			if !isError || !errors.Is(recoveredError, http.ErrAbortHandler) {
-				t.Errorf("got panic %v, want an error matching http.ErrAbortHandler", recovery)
+			// Compared as interfaces: the value has to arrive as the same value,
+			// not as a copy or a wrapper, or the identity checks downstream fail.
+			if recovery != test.panicValue {
+				t.Errorf("got panic %v, want the downstream panic %v unchanged", recovery, test.panicValue)
 			}
 		})
 	}

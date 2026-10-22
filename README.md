@@ -222,12 +222,6 @@ keep theirs.
   `http.Flusher` fails and it stops flushing for the route. A forwarded body
   still leaves as `net/http`'s own response buffer fills, so a long stream keeps
   moving, but a stream under about 2 kB in total arrives at the end.
-* **Aborted upstream responses log at ERROR.** When a backend abandons a
-  response, this plugin re-panics `http.ErrAbortHandler` so Traefik performs the
-  abort rather than sending a `200` with no body. Yaegi wraps the panic value,
-  which defeats Traefik's identity check on the sentinel, so its recovery
-  middleware logs each abort at ERROR where an unplugged route logs DEBUG. Noise
-  only.
 
 ## Development
 
