@@ -165,7 +165,8 @@ A response is rewritten only when all of the following hold. They are checked in
 order of cost, cheapest first:
 
 1. The request method is in `monitoring.methods`, and is not `HEAD`.
-2. The request is not a WebSocket upgrade.
+2. The request is not a WebSocket upgrade: a `Connection` header listing
+   `upgrade` together with an `Upgrade` header listing `websocket`, in any case.
 3. The request's `Accept` header does not rule out every monitored type. `*/*`,
    a range such as `text/*`, and a missing header are all open-ended and pass
    this gate — `Accept` states what a client would like, not what the response

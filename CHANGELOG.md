@@ -6,6 +6,15 @@ This project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Fixed
 
+- **A request counts as a WebSocket upgrade only when it is one.** The check
+  matched `websocket` in the first `Upgrade` header line, case-sensitively, and
+  ignored `Connection`. A plain request that merely carried
+  `Upgrade: websocket` was skipped and its page left unrewritten, though a
+  reverse proxy honors `Upgrade` only when `Connection` names it, so it is an
+  ordinary request. A request is now skipped when `Connection` lists `upgrade`
+  and `Upgrade` lists `websocket`, as the case-insensitive, comma-separated
+  lists RFC 6455 defines. That also recognizes `Upgrade: WebSocket` and a
+  `websocket` that sits on a later header line.
 - **A panic in the handler behind the plugin is no longer swallowed.**
   `ServeHTTP` recovered every panic below it, logged a warning and returned, so
   Traefik completed the response with whatever had been written: a `200` with

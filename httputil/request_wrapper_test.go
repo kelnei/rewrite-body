@@ -146,19 +146,86 @@ func TestRemoveUnuspportedEncoding(t *testing.T) {
 	}
 }
 
-func TestSupportsProcessingSkipsWebsocketUpgrade(t *testing.T) {
+func TestSupportsProcessingWebsocketUpgrade(t *testing.T) {
 	// A websocket upgrade must be handed straight to the underlying writer.
 	// Buffering one would break the connection, which is what upstream saw as a
 	// panic on upgrade. (traefik/plugin-rewritebody#15)
-	request := newTestRequest(t, http.MethodGet)
-	request.Header.Set("Accept", "text/html")
-	request.Header.Set("Connection", "Upgrade")
-	request.Header.Set("Upgrade", "websocket")
+	//
+	// The request is an upgrade when it says so the way RFC 6455 section 4.1
+	// does: a Connection header listing the upgrade token and an Upgrade header
+	// listing websocket, both case-insensitive lists. Anything short of that is
+	// an ordinary request, and its response is rewritten like any other.
+	tests := []struct {
+		desc            string
+		connection      []string
+		upgrade         []string
+		expectedSupport bool
+	}{
+		{
+			desc:       "Skips a websocket upgrade",
+			connection: []string{"Upgrade"},
+			upgrade:    []string{"websocket"},
+		},
+		{
+			desc:       "Skips when the header values differ in case",
+			connection: []string{"upgrade"},
+			upgrade:    []string{"WebSocket"},
+		},
+		{
+			desc:       "Skips when Connection lists other tokens, as Firefox sends it",
+			connection: []string{"keep-alive, Upgrade"},
+			upgrade:    []string{"websocket"},
+		},
+		{
+			desc:       "Skips when the tokens arrive on separate header lines",
+			connection: []string{"keep-alive", "Upgrade"},
+			upgrade:    []string{"h2c", "websocket"},
+		},
+		{
+			desc:            "Processes Upgrade websocket without Connection upgrade",
+			upgrade:         []string{"websocket"},
+			expectedSupport: true,
+		},
+		{
+			desc:            "Processes Connection upgrade for another protocol",
+			connection:      []string{"Upgrade"},
+			upgrade:         []string{"h2c"},
+			expectedSupport: true,
+		},
+		{
+			desc:            "Processes Connection upgrade without an Upgrade header",
+			connection:      []string{"Upgrade"},
+			expectedSupport: true,
+		},
+		{
+			desc:            "Processes Connection keep-alive",
+			connection:      []string{"keep-alive"},
+			upgrade:         []string{"websocket"},
+			expectedSupport: true,
+		},
+	}
 
-	wrappedRequest := WrapRequest(request, defaultMonitoring, *logger.CreateLogger(logger.Error))
+	defaultLogWriter := logger.CreateLogger(logger.Error)
 
-	if wrappedRequest.SupportsProcessing() {
-		t.Error("a websocket upgrade must not be processed")
+	for _, test := range tests {
+		t.Run(test.desc, func(t *testing.T) {
+			request := newTestRequest(t, http.MethodGet)
+			request.Header.Set("Accept", "text/html")
+
+			for _, value := range test.connection {
+				request.Header.Add("Connection", value)
+			}
+
+			for _, value := range test.upgrade {
+				request.Header.Add("Upgrade", value)
+			}
+
+			wrappedRequest := WrapRequest(request, defaultMonitoring, *defaultLogWriter)
+
+			if got := wrappedRequest.SupportsProcessing(); got != test.expectedSupport {
+				t.Errorf("Expected: %t | Got: %t", test.expectedSupport, got)
+			}
+		})
 	}
 }
 
