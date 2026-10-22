@@ -168,11 +168,39 @@ func (req *RequestWrapper) SupportsProcessing() bool {
 		return false
 	}
 
-	if strings.Contains(req.Header.Get("Upgrade"), "websocket") {
+	if req.isWebSocketUpgrade() {
 		return false
 	}
 
 	return req.acceptsMonitoredType()
+}
+
+// isWebSocketUpgrade reports whether the request asks to switch to the
+// WebSocket protocol, which RFC 6455 section 4.1 spells as a Connection header
+// listing the upgrade token and an Upgrade header listing websocket.
+//
+// Both are comma-separated lists of case-insensitive tokens that may be split
+// across several header lines. Requiring Connection as well matches
+// net/http/httputil's ReverseProxy, which only honors an Upgrade header that
+// Connection names, so a bare Upgrade header is an ordinary request and its
+// response is rewritten like any other.
+func (req *RequestWrapper) isWebSocketUpgrade() bool {
+	return headerListsToken(req.Header.Values("Connection"), "upgrade") &&
+		headerListsToken(req.Header.Values("Upgrade"), "websocket")
+}
+
+// headerListsToken reports whether any of the comma-separated header values
+// holds token, ignoring case and surrounding whitespace.
+func headerListsToken(values []string, token string) bool {
+	for _, value := range values {
+		for _, candidate := range strings.Split(value, ",") {
+			if strings.EqualFold(strings.TrimSpace(candidate), token) {
+				return true
+			}
+		}
+	}
+
+	return false
 }
 
 // hasMonitoredMethod reports whether the request uses a monitored method.
