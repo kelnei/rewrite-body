@@ -11,8 +11,8 @@ bodies with regular expressions — including bodies that arrive `gzip` or
 > which is itself a fork of Traefik's
 > [plugin-rewritebody](https://github.com/traefik/plugin-rewritebody). Neither
 > has taken a commit since November 2022. This one is kept working against
-> current Traefik: v1.3.0 is verified against Traefik 3.7.9, compiled and under
-> Yaegi. See [`CHANGELOG.md`](CHANGELOG.md) for what changed and
+> current Traefik: v1.3.0 is verified against Traefik 3.7.16, compiled and
+> under Yaegi. See [`CHANGELOG.md`](CHANGELOG.md) for what changed and
 > [`NOTICE`](NOTICE) for every modification relative to upstream.
 
 ## What it is good for
@@ -32,7 +32,7 @@ It works on any response body the plugin is allowed to buffer — see
 
 ## Requirements
 
-Traefik v3, verified against 3.7.9. The plugin has no Go dependencies.
+Traefik v3, verified against 3.7.16. The plugin has no Go dependencies.
 
 ## Installation
 
@@ -250,7 +250,7 @@ under Yaegi.
 ### Traefik interprets this plugin, so its Go is not the Go you build with
 
 Traefik does not compile plugins. It runs them through
-[Yaegi](https://github.com/traefik/yaegi), and Traefik 3.7.9 pins
+[Yaegi](https://github.com/traefik/yaegi), and Traefik 3.7.16 pins
 `yaegi v0.16.1` — released April 2024, still the newest release, and lightly
 maintained since. Two consequences the compiler and `go test` will let you walk
 straight into:
