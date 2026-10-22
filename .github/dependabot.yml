@@ -1,0 +1,16 @@
+version: 2
+
+updates:
+  # The actions are pinned to commit SHAs, which nothing bumps on its own.
+  # Dependabot rewrites the SHA and the version comment beside it together.
+  # The tools env-pinned in the workflow (golangci-lint, Yaegi) are not
+  # actions, so those are bumped by hand along with their hashes.
+  - package-ecosystem: github-actions
+    directory: /
+    schedule:
+      interval: weekly
+    # Not the default, which proposes a release the day it is published. A
+    # compromised release is usually found and pulled within days, so wait a
+    # week before proposing one.
+    cooldown:
+      default-days: 7
