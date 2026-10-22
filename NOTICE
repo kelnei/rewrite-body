@@ -93,3 +93,6 @@ upstream v1.2.0 (commit a37d560, 24 November 2022):
   * .devcontainer was removed. It described upstream's own workstation -- Go
     1.18, Yaegi v0.9.20, a deprecated base image, and bind mounts of shell
     dotfiles -- and could not be created anywhere those files are missing.
+
+  * .github/ISSUE_TEMPLATE was removed. Issues are disabled on this repository,
+    so the templates could never be offered.
