@@ -3,7 +3,9 @@ package compressutil_test
 import (
 	"bytes"
 	"compress/gzip"
+	"compress/zlib"
 	"errors"
+	"io"
 	"testing"
 
 	"github.com/kelnei/rewrite-body/compressutil"
@@ -44,59 +46,66 @@ var rawDeflateBytes = []byte{
 	200, 75, 45, 87, 72, 74, 44, 2, 4, 0, 0, 255, 255,
 }
 
+// asIs opens output that should already be the payload itself.
+func asIs(reader io.Reader) (io.Reader, error) {
+	return reader, nil
+}
+
+// TestEncode checks what the output decodes to, not its exact bytes. Those
+// are the compressor's choice rather than part of either format: Go 1.27's
+// compress/flate stores this payload in a literal block where earlier releases
+// Huffman-coded it, and both are valid.
 func TestEncode(t *testing.T) {
-	tests := []TestStruct{
+	tests := []struct {
+		desc     string
+		encoding string
+		// open reads the output with the standard library's reader for the
+		// format, not with Decode: Decode also accepts raw DEFLATE under
+		// deflate, so it would pass an encoder that left off the zlib wrapper
+		// anything reading Content-Encoding: deflate to the letter expects.
+		open func(io.Reader) (io.Reader, error)
+	}{
 		{
-			desc:        "should support identity",
-			input:       normalBytes,
-			expected:    normalBytes,
-			encoding:    compressutil.Identity,
-			shouldMatch: true,
+			desc:     "should support identity",
+			encoding: compressutil.Identity,
+			open:     asIs,
 		},
 		{
-			desc:        "should support gzip",
-			input:       normalBytes,
-			expected:    gzippedBytes,
-			encoding:    compressutil.Gzip,
-			shouldMatch: false,
+			desc:     "should support gzip",
+			encoding: compressutil.Gzip,
+			open:     func(reader io.Reader) (io.Reader, error) { return gzip.NewReader(reader) },
 		},
 		{
-			desc:        "should support deflate",
-			input:       normalBytes,
-			expected:    zlibBytes,
-			encoding:    compressutil.Deflate,
-			shouldMatch: false,
+			desc:     "should support deflate as zlib",
+			encoding: compressutil.Deflate,
+			open:     func(reader io.Reader) (io.Reader, error) { return zlib.NewReader(reader) },
 		},
 		{
-			desc:        "should NOT support brotli",
-			input:       normalBytes,
-			expected:    normalBytes,
-			encoding:    "br",
-			shouldMatch: true,
+			desc:     "should NOT support brotli",
+			encoding: "br",
+			open:     asIs,
 		},
 	}
 
 	for _, test := range tests {
 		t.Run(test.desc, func(t *testing.T) {
-			output, err := compressutil.Encode(test.input, test.encoding)
+			output, err := compressutil.Encode(normalBytes, test.encoding)
 			if err != nil {
-				t.Errorf("unexpected error: %v", err)
+				t.Fatalf("unexpected error: %v", err)
 			}
 
-			isBad := !bytes.Equal(test.expected, output)
-
-			if isBad {
-				t.Errorf("expected error got body: %v\n wanted: %v", output, test.expected)
+			reader, err := test.open(bytes.NewReader(output))
+			if err != nil {
+				t.Fatalf("got % x, which does not open as %s: %v", output, test.encoding, err)
 			}
 
-			if test.shouldMatch {
-				isBad = !bytes.Equal(test.input, output)
-			} else {
-				isBad = bytes.Equal(test.input, output)
+			decoded, err := io.ReadAll(reader)
+			if err != nil {
+				t.Fatalf("got % x, which does not read as %s: %v", output, test.encoding, err)
 			}
 
-			if isBad {
-				t.Errorf("match error got body: %v\n wanted: %v", output, test.input)
+			if string(decoded) != payload {
+				t.Errorf("got %q, want %q", decoded, payload)
 			}
 		})
 	}
@@ -128,28 +137,6 @@ func TestDecodeDeflateAcceptsBothWireFormats(t *testing.T) {
 				t.Errorf("got %q, want %q", decoded, payload)
 			}
 		})
-	}
-}
-
-func TestEncodeDeflateRoundTrips(t *testing.T) {
-	encoded, err := compressutil.Encode(normalBytes, compressutil.Deflate)
-	if err != nil {
-		t.Fatalf("unexpected error: %v", err)
-	}
-
-	// Anything reading Content-Encoding: deflate to the letter expects the zlib
-	// header, so the encoder has to produce it.
-	if len(encoded) < 2 || encoded[0] != 120 {
-		t.Errorf("got % v, want output starting with a zlib header", encoded)
-	}
-
-	decoded, err := compressutil.Decode(bytes.NewBuffer(encoded), compressutil.Deflate)
-	if err != nil {
-		t.Fatalf("unexpected error decoding: %v", err)
-	}
-
-	if string(decoded) != payload {
-		t.Errorf("got %q, want %q", decoded, payload)
 	}
 }
 
@@ -230,7 +217,7 @@ func TestDecode(t *testing.T) {
 			isBad := !bytes.Equal(test.expected, output)
 
 			if isBad {
-				t.Errorf("expected error got body: %v\n wanted: %v", output, test.expected)
+				t.Errorf("got body: %v\n wanted: %v", output, test.expected)
 			}
 
 			if test.shouldMatch {
