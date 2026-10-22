@@ -11,7 +11,7 @@ bodies with regular expressions — including bodies that arrive `gzip` or
 > which is itself a fork of Traefik's
 > [plugin-rewritebody](https://github.com/traefik/plugin-rewritebody). Neither
 > has taken a commit since November 2022. This one is kept working against
-> current Traefik: v1.3.0 is verified against Traefik 3.7.16, compiled and
+> current Traefik: v1.3.1 is verified against Traefik 3.7.16, compiled and
 > under Yaegi. See [`CHANGELOG.md`](CHANGELOG.md) for what changed and
 > [`NOTICE`](NOTICE) for every modification relative to upstream.
 
@@ -44,7 +44,7 @@ experimental:
   plugins:
     rewrite-body:
       moduleName: "github.com/kelnei/rewrite-body"
-      version: "v1.3.0"
+      version: "v1.3.1"
 ```
 
 Or run it from a working copy — mount the source at
