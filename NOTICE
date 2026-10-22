@@ -96,3 +96,7 @@ upstream v1.2.0 (commit a37d560, 24 November 2022):
 
   * .github/ISSUE_TEMPLATE was removed. Issues are disabled on this repository,
     so the templates could never be offered.
+
+  * Makefile: the vendor and clean targets were removed, since the plugin has
+    no dependencies to vendor, along with GO111MODULE=on, which has been Go's
+    default since 1.16. .PHONY now names the targets the Makefile has.
