@@ -246,6 +246,7 @@ func (wrapper *ResponseWrapper) Unwrap() http.ResponseWriter {
 // working. This used to return a channel that no one could ever send on, which
 // reads as "the client is still there" forever.
 func (wrapper *ResponseWrapper) CloseNotify() <-chan bool {
+	//nolint:staticcheck // SA1019: delegating needs the deprecated interface by name.
 	if closeNotifier, ok := wrapper.ResponseWriter.(http.CloseNotifier); ok {
 		return closeNotifier.CloseNotify()
 	}
