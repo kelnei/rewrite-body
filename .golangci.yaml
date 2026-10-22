@@ -128,10 +128,6 @@ linters:
         text: don't use an underscore in package name
       - path: (.+)\.go$
         text: "ST1003: should not use underscores in package names"
-      # CloseNotify is a deprecated interface kept deliberately, for callers that
-      # still type-assert for it. See httputil/response_writer.go.
-      - path: (.+)\.go$
-        text: "SA1019: http.CloseNotifier has been deprecated"
 
 issues:
   max-issues-per-linter: 0
