@@ -89,3 +89,7 @@ upstream v1.2.0 (commit a37d560, 24 November 2022):
   * .github/workflows and .golangci.yaml were updated so lint and tests -- both
     compiled and under Yaegi -- actually run for this fork, on every supported Go
     release. Tests were added throughout for the above.
+
+  * .devcontainer was removed. It described upstream's own workstation -- Go
+    1.18, Yaegi v0.9.20, a deprecated base image, and bind mounts of shell
+    dotfiles -- and could not be created anywhere those files are missing.
