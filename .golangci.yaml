@@ -119,13 +119,8 @@ linters:
           # the Go 1.23 addition, so the root package's tests cannot name it and
           # still run under `make yaegi_test`.
           - noctx
-      - path: config.go
-        linters:
-          - lll
-      # A v2 exclusion needs two matchers, so these carry a path that matches
+      # A v2 exclusion needs two matchers, so this carries a path that matches
       # every Go file rather than narrowing anything.
-      - path: (.+)\.go$
-        text: don't use an underscore in package name
       - path: (.+)\.go$
         text: "ST1003: should not use underscores in package names"
 
