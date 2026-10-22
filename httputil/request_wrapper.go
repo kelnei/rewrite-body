@@ -154,6 +154,19 @@ func (req *RequestWrapper) acceptsMonitoredType() bool {
 // The checks run cheapest first: rejecting on the method costs a comparison,
 // while the Accept header check scans a header value once per monitored type.
 func (req *RequestWrapper) SupportsProcessing() bool {
+	return req.ConsultsAccept() && req.acceptsMonitoredType()
+}
+
+// ConsultsAccept reports whether the request's Accept header decides what this
+// plugin does with the response, which is to say that the request is one the
+// plugin might process and Accept is the last thing standing in the way.
+//
+// It is what a response has to say about itself with Vary: Accept. The same URL
+// answers one request with a rewritten page and another, whose Accept ruled the
+// rewrite out, with the page as the backend sent it, and a cache that keys on
+// the URL alone cannot tell them apart. A request that is skipped for another
+// reason is not asked about Accept at all, so its response does not depend on it.
+func (req *RequestWrapper) ConsultsAccept() bool {
 	// A response to HEAD carries no body, so there is nothing here to rewrite.
 	// Processing one is actively harmful: the wrapper drops the upstream
 	// Content-Length on the way through and no body is ever written to replace
@@ -168,11 +181,7 @@ func (req *RequestWrapper) SupportsProcessing() bool {
 		return false
 	}
 
-	if req.isWebSocketUpgrade() {
-		return false
-	}
-
-	return req.acceptsMonitoredType()
+	return !req.isWebSocketUpgrade()
 }
 
 // isWebSocketUpgrade reports whether the request asks to switch to the

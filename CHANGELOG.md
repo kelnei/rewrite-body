@@ -6,6 +6,18 @@ This project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Fixed
 
+- **Responses whose rewrite depends on `Accept` now say so with
+  `Vary: Accept`.** A page was rewritten for a request whose `Accept` header
+  allowed HTML and sent as the backend wrote it to one that asked for something
+  else, from the same URL and with no `Vary` to tell a shared cache the two
+  differ. A rewritten response now carries `Vary: Accept`, added after the
+  backend's own headers so a handler that sets `Vary` cannot replace it, and a
+  forwarded response does not, since its bytes do not depend on the request. A
+  request skipped on its `Accept` header gets it before the backend answers,
+  whatever the response turns out to be. Caches that key on the exact `Accept`
+  string will hold a copy per value; the README lists the other limits.
+  Measured against Traefik 3.7.16: `HEAD`, `POST` and WebSocket upgrade
+  requests get no `Vary` from the plugin.
 - **A request counts as a WebSocket upgrade only when it is one.** The check
   matched `websocket` in the first `Upgrade` header line, case-sensitively, and
   ignored `Connection`. A plain request that merely carried

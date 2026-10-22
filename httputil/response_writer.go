@@ -93,6 +93,13 @@ func (wrapper *ResponseWrapper) WriteHeader(statusCode int) {
 
 		// Delegates the Content-Length Header creation to the final body write.
 		wrapper.ResponseWriter.Header().Del("Content-Length")
+
+		// Whether this body gets rewritten depended on the request's Accept
+		// header, so a cache has to keep the copies apart. Added here, once the
+		// backend has set its own headers, so that it cannot be replaced by a
+		// handler that sets Vary. A forwarded response is the same bytes whatever
+		// the request accepted and does not vary.
+		AddVary(wrapper.ResponseWriter.Header(), "Accept")
 	}
 
 	wrapper.ResponseWriter.WriteHeader(statusCode)
