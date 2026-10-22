@@ -28,11 +28,28 @@ upstream v1.2.0 (commit a37d560, 24 November 2022):
 
   * logger/logger_format_test.go was added to cover both of the above.
 
-  * handler/handler.go: http.ErrAbortHandler is re-panicked instead of being
-    recovered. Recovering it made ServeHTTP return normally, so the server
-    completed a response that had deliberately been abandoned -- verified
-    against Traefik 3.7.9, where an upstream that aborted mid-body reached the
-    client as a 200 with Content-Length: 0 instead of a closed connection.
+  * handler/handler.go: ServeHTTP no longer recovers panics from the handler it
+    wraps. Upstream recovered every one, logged it and returned, so the server
+    completed the response with whatever had been written -- verified against
+    Traefik 3.7.16, where a panic below the plugin, http.ErrAbortHandler
+    included, reached the client as a 200 with Content-Length: 0 and any cache
+    headers the handler had set, instead of a 500 or a closed connection. The
+    panic now passes up to Traefik's own recovery, so a route behaves the same
+    with the plugin as without it.
+
+  * httputil/request_wrapper.go: a request is skipped as a WebSocket upgrade
+    only when its Connection header lists upgrade and its Upgrade header lists
+    websocket, each read as a case-insensitive, comma-separated list across all
+    header lines. Upstream matched websocket case-sensitively in the first
+    Upgrade line and never read Connection, so a plain request that carried an
+    Upgrade header was skipped and its page left unrewritten.
+
+  * httputil/vary.go was added, and handler/handler.go,
+    httputil/request_wrapper.go and httputil/response_writer.go changed to use
+    it: a rewritten response carries Vary: Accept, as does a request skipped on
+    its Accept header, so a shared cache can tell the rewritten and unrewritten
+    copies of one URL apart. A forwarded response does not get it, since its
+    bytes do not depend on the request.
 
   * handler/handler.go: full response bodies are logged at Trace rather than
     Debug, leaving Debug usable as an operator log level.
@@ -95,7 +112,16 @@ upstream v1.2.0 (commit a37d560, 24 November 2022):
 
   * .github/workflows and .golangci.yaml were updated so lint and tests -- both
     compiled and under Yaegi -- actually run for this fork, on every supported Go
-    release. Tests were added throughout for the above.
+    release. The workflow's actions are pinned to commit SHAs, and its two tools
+    are installed from release tarballs checked against a recorded SHA-256.
+    .github/dependabot.yml bumps the pinned actions. Tests were added
+    throughout for the above.
+
+  * docs/TRUST_BOUNDARIES.md was added. It records who can reach the plugin,
+    what each log level writes and what is deliberately not a boundary.
+
+  * SECURITY.md was added. It says how to report a vulnerability privately and
+    which release is maintained.
 
   * .devcontainer was removed. It described upstream's own workstation -- Go
     1.18, Yaegi v0.9.20, a deprecated base image, and bind mounts of shell
