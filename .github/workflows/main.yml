@@ -54,6 +54,9 @@ jobs:
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           path: go/src/github.com/${{ github.repository }}
+          # Nothing after the checkout talks to GitHub as this repository, so
+          # leave no token in .git/config for a later step to read.
+          persist-credentials: false
 
       # https://github.com/marketplace/actions/setup-go-environment
       - name: Set up Go ${{ matrix.go-version }}
