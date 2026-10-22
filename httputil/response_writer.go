@@ -176,9 +176,18 @@ func (wrapper *ResponseWrapper) getHeader(headerName string) string {
 	return wrapper.ResponseWriter.Header().Get(headerName)
 }
 
-// LogHeaders writes current response headers.
+// LogHeaders writes the response headers that describe the body, at Debug level.
+//
+// Only Content-Type and Content-Encoding are written. The full header map is
+// not: it carries Set-Cookie, so logging it would put a session token in the
+// log of any response that failed to reach the client.
 func (wrapper *ResponseWrapper) LogHeaders() {
-	wrapper.logWriter.LogDebugf("Error Headers: %v", wrapper.ResponseWriter.Header())
+	wrapper.logWriter.LogDebugf(
+		"Error Headers: status=%d content-type=%q content-encoding=%q",
+		wrapper.code,
+		wrapper.getContentType(),
+		wrapper.getContentEncoding(),
+	)
 }
 
 // getContentEncoding get the Content-Encoding header value.
