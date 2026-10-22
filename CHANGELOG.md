@@ -2,9 +2,43 @@
 
 This project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## Unreleased
+## v1.3.1 — 2026-10-22
+
+Four fixes: one to what the plugin logs, three to how it treats the requests
+and responses passing through it. The first matters if you ran a route at
+`logLevel` `-1` or lower: v1.3.0 wrote request credentials to the log there.
+Configuration is unchanged and no exported API was removed, so upgrading is a
+version bump.
+
+The panic, WebSocket and `Vary` fixes were each measured against Traefik 3.7.16
+with the plugin loaded by Yaegi. The credential fix is covered by unit tests
+that capture the log.
 
 ### Fixed
+
+- **Debug logging no longer writes request credentials.** The two per-request
+  Debug lines printed the whole `*http.Request`, which includes every header
+  (`Authorization` and `Cookie` among them), the query string and the client
+  address, and Debug is meant to be usable as an operator log level. They now
+  log the method, host, path and the `Accept`, `Accept-Encoding` and `Upgrade`
+  headers. `ResponseWrapper.LogHeaders`, which runs when a rewritten body cannot
+  be written to the client, printed the response headers and with them any
+  `Set-Cookie`; it now logs the status, `Content-Type` and `Content-Encoding`.
+  Only routes configured with `logLevel` `-1` or lower were affected, since the
+  default of `0` never wrote these lines. Where a route ran at Debug on v1.3.0
+  or earlier, treat the logs it wrote as holding credentials. Trace still logs
+  response bodies in full, and the README now says what that can contain.
+- **A panic in the handler behind the plugin is no longer swallowed.**
+  `ServeHTTP` recovered every panic below it, logged a warning and returned, so
+  Traefik completed the response with whatever had been written: a `200` with
+  `Content-Length: 0`, carrying any cache headers the handler had set, where the
+  same route without this plugin answers `500`, or closes the connection once
+  the headers are out. v1.3.0 re-panicked `http.ErrAbortHandler` only; every
+  other panic was still swallowed. The plugin now leaves panics to Traefik's
+  recovery middleware, so a route behaves the same with it as without. The
+  README's note that aborted responses log at ERROR is gone with the re-panic
+  it described: a backend that drops the connection mid-body logs at DEBUG,
+  as it does on a route without the plugin.
 
 - **Responses whose rewrite depends on `Accept` now say so with
   `Vary: Accept`.** A page was rewritten for a request whose `Accept` header
@@ -27,29 +61,32 @@ This project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   and `Upgrade` lists `websocket`, as the case-insensitive, comma-separated
   lists RFC 6455 defines. That also recognizes `Upgrade: WebSocket` and a
   `websocket` that sits on a later header line.
-- **A panic in the handler behind the plugin is no longer swallowed.**
-  `ServeHTTP` recovered every panic below it, logged a warning and returned, so
-  Traefik completed the response with whatever had been written: a `200` with
-  `Content-Length: 0`, carrying any cache headers the handler had set, where the
-  same route without this plugin answers `500`, or closes the connection once
-  the headers are out. v1.3.0 re-panicked `http.ErrAbortHandler` only; every
-  other panic was still swallowed. The plugin now leaves panics to Traefik's
-  recovery middleware, so a route behaves the same with it as without. The
-  README's note that aborted responses log at ERROR is gone with the re-panic
-  it described: a backend that drops the connection mid-body logs at DEBUG,
-  as it does on a route without the plugin.
-- **Debug logging no longer writes request credentials.** The two per-request
-  Debug lines printed the whole `*http.Request`, which includes every header
-  (`Authorization` and `Cookie` among them), the query string and the client
-  address, and Debug is meant to be usable as an operator log level. They now
-  log the method, host, path and the `Accept`, `Accept-Encoding` and `Upgrade`
-  headers. `ResponseWrapper.LogHeaders`, which runs when a rewritten body cannot
-  be written to the client, printed the response headers and with them any
-  `Set-Cookie`; it now logs the status, `Content-Type` and `Content-Encoding`.
-  Only routes configured with `logLevel` `-1` or lower were affected, since the
-  default of `0` never wrote these lines. Where a route ran at Debug on v1.3.0
-  or earlier, treat the logs it wrote as holding credentials. Trace still logs
-  response bodies in full, and the README now says what that can contain.
+
+### Added
+
+- `httputil.AddVary` and `RequestWrapper.ConsultsAccept`, which the `Vary`
+  change uses. Nothing exported was removed or changed in signature.
+
+### Internal
+
+- `.devcontainer/` is gone. It described upstream's own workstation — Go 1.18,
+  Yaegi v0.9.20, a deprecated base image and bind mounts of shell dotfiles — and
+  nothing in the build or CI used it. The `v1.3.0` tag still contains it. The
+  issue templates under `.github/ISSUE_TEMPLATE/` went too, since issues are
+  disabled.
+- CI no longer runs installer scripts fetched from a branch. Actions are pinned
+  to commit SHAs, the checkout does not keep the repository token, and
+  golangci-lint v2.15.0 and Yaegi v0.16.1 are installed from release tarballs
+  checked against a recorded SHA-256. Dependabot bumps the pinned actions
+  weekly, with a 7-day cooldown, and CI also runs weekly as well as on push.
+- `SECURITY.md` says how to report a vulnerability privately.
+  `docs/TRUST_BOUNDARIES.md` records who can reach the plugin and what each
+  input is trusted with. `NOTICE` lists the panic, WebSocket and `Vary` changes.
+- The `Makefile` drops the `vendor` and `clean` targets and `GO111MODULE=on`,
+  which a module with no dependencies has no use for. Lint exclusions that
+  matched nothing were removed.
+- The `Encode` test checks what the output decodes to rather than its exact
+  bytes.
 
 ## v1.3.0 — 2026-07-25
 
