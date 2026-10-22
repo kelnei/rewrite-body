@@ -167,7 +167,7 @@ func (wrapper *ResponseWrapper) SetContent(data []byte, encoding string) {
 	}
 
 	if _, err := wrapper.ResponseWriter.Write(bodyBytes); err != nil {
-		wrapper.logWriter.LogErrorf("unable to write rewriten body: %v", err)
+		wrapper.logWriter.LogErrorf("unable to write rewritten body: %v", err)
 		wrapper.LogHeaders()
 	}
 }
@@ -195,7 +195,7 @@ func (wrapper *ResponseWrapper) getContentEncoding() string {
 	return wrapper.getHeader("Content-Encoding")
 }
 
-// getContentType get the Content-Encoding header value.
+// getContentType get the Content-Type header value.
 func (wrapper *ResponseWrapper) getContentType() string {
 	return wrapper.getHeader("Content-Type")
 }
