@@ -7,6 +7,14 @@ on:
     tags:
       - v*
   pull_request:
+  # The matrix follows Go's release aliases, so a Go release can break this
+  # without a commit here. A weekly run reports that when it happens, not at
+  # the next push, which can be months later. GitHub disables the schedule on a
+  # public repository after 60 days without activity; `gh workflow enable
+  # main.yml` restores it, and workflow_dispatch runs it on demand.
+  schedule:
+    - cron: '23 6 * * 1'
+  workflow_dispatch:
 
 permissions:
   contents: read
