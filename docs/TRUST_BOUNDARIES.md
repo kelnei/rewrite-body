@@ -78,6 +78,11 @@ tokens or credentials, and none ship with it.
   `replacement` expands `$1` and `${name}` by design.
 * **No dependencies and no `go.sum`.** The module imports only the standard
   library. The supply-chain surface is the CI toolchain, not the module graph.
+  The workflow's actions are pinned to commit SHAs and its two tools are
+  installed from release tarballs checked against a recorded SHA-256, so a
+  moved tag or branch upstream does not change what CI runs. Dependabot bumps
+  the actions. Yaegi publishes no attestation, so its hash pins only the
+  tarball that was current when it was recorded.
 * **The interpreter's standard library is frozen at Go 1.22.** Yaegi, not the
   compiler, decides which APIs the plugin may call. That limits what a fix can
   use. It is not a vulnerability.
