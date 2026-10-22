@@ -37,8 +37,14 @@ jobs:
         # has to stay at or below oldstable.
         go-version: ['oldstable', 'stable']
     env:
+      # Each tool is a release tarball checked against the SHA-256 pinned beside
+      # it, so changing a version means changing its hash in the same edit. The
+      # hash is of the linux-amd64 tarball. Take it from the release's checksums
+      # file and confirm it by hashing the download.
       GOLANGCI_LINT_VERSION: v2.15.0
+      GOLANGCI_LINT_SHA256: 9b7fe6a6bf6334b98decf8d86b11415ea7889afdabdd1959fdce23af2a9ebcea
       YAEGI_VERSION: v0.16.1
+      YAEGI_SHA256: 396e30227c21172324147a3c603a044a0cc0ed8bbda490fd34831905ff977f96
       CGO_ENABLED: 0
     defaults:
       run:
@@ -66,18 +72,30 @@ jobs:
           # The plugin has no dependencies, so there is no go.sum to key a cache on.
           cache: false
 
-      # https://golangci-lint.run/usage/install#other-ci
+      # Not the projects' install.sh scripts: those are fetched from a branch, so
+      # the code that runs here would be whatever the branch holds that day, and
+      # they verify the download against a checksum fetched from the same
+      # release, which proves nothing if the release is what changed.
       #
-      # HEAD, not master: golangci-lint renamed its default branch to main and
-      # left master behind at the v1-era script, which cannot install a v2
-      # release -- it logs a failed download at debug and carries on, so the
-      # break surfaces as a checksum mismatch. Yaegi below still uses master
-      # because that is genuinely its default branch.
+      # golangci-lint publishes build attestations for its releases, which
+      # `gh attestation verify` can check. The hash here was checked that way.
       - name: Install golangci-lint ${{ env.GOLANGCI_LINT_VERSION }}
-        run: curl -sSfL https://raw.githubusercontent.com/golangci/golangci-lint/HEAD/install.sh | sh -s -- -b "${HOME}/go/bin" "${GOLANGCI_LINT_VERSION}"
+        run: |
+          name="golangci-lint-${GOLANGCI_LINT_VERSION#v}-linux-amd64"
+          curl -sSfL -o "${RUNNER_TEMP}/${name}.tar.gz" "https://github.com/golangci/golangci-lint/releases/download/${GOLANGCI_LINT_VERSION}/${name}.tar.gz"
+          echo "${GOLANGCI_LINT_SHA256}  ${RUNNER_TEMP}/${name}.tar.gz" | sha256sum --check --strict -
+          mkdir -p "${HOME}/go/bin"
+          tar -xzf "${RUNNER_TEMP}/${name}.tar.gz" -C "${HOME}/go/bin" --strip-components=1 "${name}/golangci-lint"
 
+      # Yaegi publishes no attestation or signature, so this hash is trust on
+      # first use: it pins the tarball that was current when it was recorded.
       - name: Install Yaegi ${{ env.YAEGI_VERSION }}
-        run: curl -sfL https://raw.githubusercontent.com/traefik/yaegi/master/install.sh | bash -s -- -b "${HOME}/go/bin" "${YAEGI_VERSION}"
+        run: |
+          name="yaegi_${YAEGI_VERSION}_linux_amd64.tar.gz"
+          curl -sSfL -o "${RUNNER_TEMP}/${name}" "https://github.com/traefik/yaegi/releases/download/${YAEGI_VERSION}/${name}"
+          echo "${YAEGI_SHA256}  ${RUNNER_TEMP}/${name}" | sha256sum --check --strict -
+          mkdir -p "${HOME}/go/bin"
+          tar -xzf "${RUNNER_TEMP}/${name}" -C "${HOME}/go/bin" yaegi
 
       - name: Check go.mod is tidy
         run: |
