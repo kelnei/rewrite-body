@@ -67,6 +67,15 @@ func (bodyRewrite *rewriteBody) ServeHTTP(response http.ResponseWriter, req *htt
 	// allow default http.ResponseWriter to handle calls targeting WebSocket upgrades and non GET methods
 	if !wrappedRequest.SupportsProcessing() {
 		bodyRewrite.logRequest("Ignoring unsupported request", req)
+
+		// A request skipped on its Accept header is answered with the page as the
+		// backend sent it, from the same URL that answers another request with a
+		// rewritten one. The backend has not said yet what it is sending, so this
+		// goes on before the call, and the writer stays the one Traefik gave us.
+		if wrappedRequest.ConsultsAccept() {
+			httputil.AddVary(response.Header(), "Accept")
+		}
+
 		bodyRewrite.next.ServeHTTP(response, req)
 
 		return

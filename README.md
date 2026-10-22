@@ -206,6 +206,26 @@ truncated.
 changes the length; the final write establishes the new one. Forwarded responses
 keep theirs.
 
+`Vary: Accept` is added to a rewritten response, because the request's `Accept`
+header decided whether the body was rewritten and a shared cache has to keep
+those copies apart. It goes in after the backend has set its own headers, as an
+extra `Vary` line beside any the backend sent, and is left out when `Vary`
+already lists `Accept` or `*`. A forwarded response does not get it on this
+path: those bytes are the same whatever the request accepted.
+
+A request that gate 3 skips is different, because the plugin has to answer
+before the backend has said what it is sending. It gets `Vary: Accept` before
+the call, whatever the response turns out to be. That keeps a cache from
+serving the unrewritten page to a client that asked for HTML, at a price:
+
+* A cache that keys on the exact `Accept` string, as nginx, Varnish and Fastly
+  do by default, holds one copy per distinct value, for these responses and for
+  the images and downloads that happened to be requested with a narrow `Accept`.
+* A CDN that ignores `Vary`, or honors it only for a short list of headers,
+  cannot tell the copies apart. Check how yours treats it.
+* A handler further down the chain that replaces `Vary` rather than adding to it
+  drops the value on this path. It cannot on the rewrite path.
+
 ## Operating notes
 
 * **A rewritten response is buffered in full.** A regular expression can match

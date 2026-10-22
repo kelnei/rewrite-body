@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"net/http"
 	"net/http/httptest"
+	"reflect"
 	"strconv"
 	"testing"
 
@@ -300,6 +301,178 @@ func TestAcceptHeaderGating(t *testing.T) {
 			recorder := serveGet(newTestHandler(t, fooToBar, next), test.accept)
 
 			if recorder.Body.String() != test.expResBody {
+				t.Errorf("got body %q, want %q", recorder.Body.String(), test.expResBody)
+			}
+		})
+	}
+}
+
+// TestVaryAccept pins when the response says it depends on the request's Accept
+// header. A request skipped on its Accept comes back unrewritten from the same
+// URL that answers another request with a rewritten page, so a cache that keys
+// on the URL alone would hand the unrewritten copy to everyone after it. The
+// header goes on only where the Accept check can change what the client gets:
+// it is not added for requests the plugin never asks about Accept, nor for a
+// response it forwards as it is whatever the request accepts.
+func TestVaryAccept(t *testing.T) {
+	const resBody = "foo is the new bar"
+
+	tests := []struct {
+		desc            string
+		method          string
+		accept          string
+		connection      string
+		upgrade         string
+		contentType     string
+		contentEncoding string
+		// backendVary is set on the response before the header is written, the
+		// way a handler describes its own variation.
+		backendVary string
+		setVary     bool
+		expVary     []string
+		expResBody  string
+	}{
+		{
+			desc:        "should vary a rewritten response",
+			accept:      "text/html",
+			contentType: "text/html",
+			expVary:     []string{"Accept"},
+			expResBody:  "bar is the new bar",
+		},
+		{
+			desc:        "should vary a rewritten response when the request sends no Accept header",
+			contentType: "text/html",
+			expVary:     []string{"Accept"},
+			expResBody:  "bar is the new bar",
+		},
+		{
+			desc:        "should keep the vary the backend set on a rewritten response",
+			accept:      "*/*",
+			contentType: "text/html",
+			backendVary: "Cookie",
+			setVary:     true,
+			expVary:     []string{"Cookie", "Accept"},
+			expResBody:  "bar is the new bar",
+		},
+		{
+			desc:        "should not list Accept twice when the backend already did",
+			accept:      "*/*",
+			contentType: "text/html",
+			backendVary: "Cookie, accept",
+			setVary:     true,
+			expVary:     []string{"Cookie, accept"},
+			expResBody:  "bar is the new bar",
+		},
+		{
+			desc:        "should leave Vary alone when the backend already varies on everything",
+			accept:      "*/*",
+			contentType: "text/html",
+			backendVary: "*",
+			setVary:     true,
+			expVary:     []string{"*"},
+			expResBody:  "bar is the new bar",
+		},
+		{
+			desc:        "should vary a response skipped because of the request Accept",
+			accept:      "application/json",
+			contentType: "text/html",
+			expVary:     []string{"Accept"},
+			expResBody:  resBody,
+		},
+		{
+			desc:        "should keep the vary the backend added to a skipped response",
+			accept:      "application/json",
+			contentType: "text/html",
+			backendVary: "Cookie",
+			expVary:     []string{"Accept", "Cookie"},
+			expResBody:  resBody,
+		},
+		{
+			desc:        "should not vary a response it forwards whatever the request accepts",
+			accept:      "*/*",
+			contentType: "image/png",
+			expResBody:  resBody,
+		},
+		{
+			desc:            "should not vary a response it cannot decode whatever the request accepts",
+			accept:          "*/*",
+			contentType:     "text/html",
+			contentEncoding: "br",
+			expResBody:      resBody,
+		},
+		{
+			desc:        "should not vary a method the plugin does not monitor",
+			method:      http.MethodPost,
+			accept:      "application/json",
+			contentType: "text/html",
+			expResBody:  resBody,
+		},
+		{
+			desc:        "should not vary a HEAD request",
+			method:      http.MethodHead,
+			accept:      "application/json",
+			contentType: "text/html",
+			expResBody:  resBody,
+		},
+		{
+			desc:        "should not vary a WebSocket upgrade",
+			accept:      "application/json",
+			connection:  "Upgrade",
+			upgrade:     "websocket",
+			contentType: "text/html",
+			expResBody:  resBody,
+		},
+	}
+
+	for _, test := range tests {
+		t.Run(test.desc, func(t *testing.T) {
+			next := func(responseWriter http.ResponseWriter, _ *http.Request) {
+				responseWriter.Header().Set("Content-Type", test.contentType)
+
+				if test.contentEncoding != "" {
+					responseWriter.Header().Set("Content-Encoding", test.contentEncoding)
+				}
+
+				switch {
+				case test.setVary:
+					responseWriter.Header().Set("Vary", test.backendVary)
+				case test.backendVary != "":
+					responseWriter.Header().Add("Vary", test.backendVary)
+				}
+
+				responseWriter.WriteHeader(http.StatusOK)
+
+				_, _ = responseWriter.Write([]byte(resBody))
+			}
+
+			method := test.method
+			if method == "" {
+				method = http.MethodGet
+			}
+
+			req := httptest.NewRequest(method, "/", nil)
+
+			for name, value := range map[string]string{
+				"Accept":     test.accept,
+				"Connection": test.connection,
+				"Upgrade":    test.upgrade,
+			} {
+				if value != "" {
+					req.Header.Set(name, value)
+				}
+			}
+
+			recorder := httptest.NewRecorder()
+			newTestHandler(t, fooToBar, next).ServeHTTP(recorder, req)
+
+			// What the client receives is the header map as it stood when the
+			// status line went out, not as it stands after.
+			got := recorder.Result().Header.Values("Vary")
+			if !reflect.DeepEqual(got, test.expVary) {
+				t.Errorf("got Vary %q, want %q", got, test.expVary)
+			}
+
+			if method != http.MethodHead && recorder.Body.String() != test.expResBody {
 				t.Errorf("got body %q, want %q", recorder.Body.String(), test.expResBody)
 			}
 		})
